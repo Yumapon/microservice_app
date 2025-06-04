@@ -1,0 +1,26 @@
+version: '3.9'
+
+services:
+  product-service:
+    build: ./services/product-service
+    ports:
+      - "8001:8000"
+    env_file:
+      - ./services/product-service/.env
+
+  user-service:
+    build: ./services/user-service
+    ports:
+      - "8002:8000"
+    env_file:
+      - ./services/user-service/.env
+
+  quote-service:
+    build: ./services/quote-service
+    ports:
+      - "8003:8000"
+
+  application-service:
+    build: ./services/application-service
+    ports:
+      - "8004:8000
