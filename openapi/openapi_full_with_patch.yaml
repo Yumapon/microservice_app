@@ -1,0 +1,536 @@
+openapi: 3.0.3
+info:
+  title: 保険アプリ API
+  description: このAPIは保険アプリにおけるユーザー認証、見積もり、申込、契約確認などの機能を提供します。
+  version: 1.0.0
+servers:
+- url: https://api.example.com
+tags:
+- name: Auth
+  description: 認証・登録関連API
+- name: PublicPlans
+  description: 公開保険商品API
+- name: Quotes
+  description: 保険見積もり関連API
+- name: Applications
+  description: 保険申込関連API
+- name: Contracts
+  description: 契約管理関連API
+- name: Notifications
+  description: お知らせ関連API
+- name: Settings
+  description: ユーザー設定API
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          example: P@ssw0rd!
+        full_name:
+          type: string
+          example: 山田 太郎
+      required:
+      - email
+      - password
+      - full_name
+    QuoteRequest:
+      type: object
+      properties:
+        plan_id:
+          type: string
+          example: pension001
+        payment_period:
+          type: integer
+          example: 20
+        monthly_premium:
+          type: integer
+          example: 20000
+        refund_condition:
+          type: string
+          example: 満期一括受取
+      required:
+      - plan_id
+      - payment_period
+      - monthly_premium
+      - refund_condition
+    QuoteResponse:
+      type: object
+      properties:
+        quote_id:
+          type: string
+          example: quote_abc123
+        plan_id:
+          type: string
+          example: pension001
+        monthly_premium:
+          type: integer
+          example: 20000
+        expected_refund:
+          type: integer
+          example: 3100000
+        valid_until:
+          type: string
+          format: date-time
+          example: '2025-07-01T00:00:00Z'
+    ApplicationRequest:
+      type: object
+      properties:
+        quote_id:
+          type: string
+          example: quote_abc123
+        user_consent:
+          type: boolean
+          example: true
+      required:
+      - quote_id
+      - user_consent
+    ApplicationResponse:
+      type: object
+      properties:
+        application_id:
+          type: string
+          example: app_xyz789
+        status:
+          type: string
+          example: submitted
+    Plan:
+      type: object
+      properties:
+        plan_id:
+          type: string
+          example: pension001
+        name:
+          type: string
+          example: 個人年金保険
+        description:
+          type: string
+          example: 老後の生活資金を確保するための保険です。
+        image_key:
+          type: string
+          example: pension001.jpg
+    Notification:
+      type: object
+      properties:
+        message_id:
+          type: string
+          example: notif001
+        title:
+          type: string
+          example: 重要なお知らせ
+        content:
+          type: string
+          example: 保険料が改定されます。
+        published_at:
+          type: string
+          format: date-time
+          example: '2025-06-01T00:00:00Z'
+        is_read:
+          type: boolean
+          example: false
+security:
+- bearerAuth: []
+paths:
+  /auth/register:
+    post:
+      tags:
+      - Auth
+      summary: ユーザー登録
+      description: 新規ユーザーをKeycloakに登録し、確認メールを送信します。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                full_name:
+                  type: string
+              required:
+              - email
+              - password
+              - full_name
+      responses:
+        '201':
+          description: 登録成功
+        '400':
+          description: 入力不備
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: サーバエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/resend-verification:
+    post:
+      tags:
+      - Auth
+      summary: 認証メール再送
+      description: 未認証のユーザーに確認メールを再送します。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+              required:
+              - email
+      responses:
+        '200':
+          description: 再送信成功
+        '400':
+          description: ユーザーが存在しない、またはすでに認証済み
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: レート制限超過
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: サーバエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/logout:
+    post:
+      tags:
+      - Auth
+      summary: ログアウト
+      description: Keycloakのrefresh_tokenを使ってログアウト処理を行います。
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: ログアウト成功
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: サーバエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/public/plans:
+    get:
+      tags:
+      - PublicPlans
+      summary: 公開保険商品一覧取得
+      description: ログイン不要で取得可能な保険商品一覧APIです。
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Plan'
+  /api/v1/quotes/{product_type}:
+    post:
+      tags:
+      - Quotes
+      summary: 保険見積もり作成
+      description: 認証済みユーザーが保険の見積もりを作成するAPI。
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: product_type
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - educational_endowment_insurance
+          - personal_pension_insurance
+        description: 保険商品の種類
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteRequest'
+      responses:
+        '200':
+          description: 見積もり結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteResponse'
+        '400':
+          description: 入力不備
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/application:
+    post:
+      tags:
+      - Applications
+      summary: 保険申込
+      description: 見積もりに基づき保険申込を行うAPI。
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationRequest'
+      responses:
+        '200':
+          description: 申込完了
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+        '400':
+          description: 入力不備
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/applications/{user_id}:
+    get:
+      tags:
+      - Contracts
+      summary: 加入保険一覧取得
+      description: ログイン中のユーザーが加入済み保険の一覧を取得するAPI。
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: ユーザーID
+      responses:
+        '200':
+          description: 契約一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApplicationResponse'
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/user/contracts/{contract_id}:
+    get:
+      tags:
+      - Contracts
+      summary: 契約詳細取得
+      description: 選択された契約IDに対応する詳細情報を取得するAPI。
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: contract_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: 契約ID
+      responses:
+        '200':
+          description: 契約詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/notifications:
+    get:
+      tags:
+      - Notifications
+      summary: お知らせ一覧取得
+      description: ユーザーに関連するお知らせ一覧を取得します。
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: お知らせ一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/notifications/{id}:
+    get:
+      tags:
+      - Notifications
+      summary: お知らせ詳細取得
+      description: 特定のお知らせを取得します。
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: お知らせID
+      responses:
+        '200':
+          description: お知らせ詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/users/setting/{user_id}:
+    get:
+      tags:
+      - Settings
+      summary: ユーザー設定取得
+      description: 指定ユーザーの設定情報を取得します。
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: ユーザーID
+      responses:
+        '200':
+          description: 設定情報取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  email_subscription: true
+                  notification_sound: false
+        '401':
+          description: 認証エラー
+    put:
+      tags:
+      - Settings
+      summary: ユーザー設定更新
+      description: ユーザーの設定を更新します。
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: ユーザーID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                email_subscription: true
+                notification_sound: false
+      responses:
+        '200':
+          description: 更新成功
+        '401':
+          description: 認証エラー
+    patch:
+      tags:
+      - Settings
+      summary: ユーザー設定の部分更新
+      description: 特定の設定項目のみを部分的に更新します。
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: ユーザーID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                notification_sound: true
+      responses:
+        '200':
+          description: 部分更新成功
+        '400':
+          description: 不正なリクエスト
+        '401':
+          description: 認証エラー
