@@ -1,211 +1,232 @@
 # DB設計
 
-整備中
+## DDL出力用 プロンプトテンプレート（mermaid & openapi => DDL）
 
-## 利用するDBMS
+あなたは、モバイルアプリおよびマイクロサービスアーキテクチャ、データベース管理に精通したプロフェッショナルなソフトウェア、データベースアーキテクトです。
 
-- PostgreSQL：構造化されたデータ（ユーザー・見積・申込など）
-- MongoDB　：柔軟な構造を持つデータ（保険商品詳細、見積もり履歴など）
+以下に示すMermaid形式のシーケンス図と、Openapiファイルをもとに、RDB(PostgreSQL)およびMongoDBの**DDL(マークダウン形式)**を出力してください。出力対象は、Mermaid形式のシーケンス図中に登場する各DB（MongoDB (商品データ)やRDB (見積もりデータ)など）です。
 
-##  PostgreSQL：DDL（テーブル定義）
+- 各DDLに対して、説明文を入れてわかりやすくしてください。
+- 出力するDDLになった理由(データ形式や、項目)の説明を別途出力してください。
 
-### users テーブル
+もし前提条件や不明点がある場合は、出力前に**質問リストを提示**してください。
 
-```sql
-CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  name VARCHAR(100) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+## ER図
+
+```mermaid
+erDiagram
+
+%% --- PostgreSQL (RDB) ---
+RDB-quotes {
+    string quote_id PK
+    string user_id
+    string plan_id
+    int payment_period
+    int monthly_premium
+    string refund_condition
+    int expected_refund
+    float interest_rate_snapshot
+    datetime valid_until
+    datetime created_at
+}
+
+RDB-applications {
+    string application_id PK
+    string quote_id
+    string user_id
+    string application_status  
+    %% ENUM('pending', 'submitted', 'deleted')
+    boolean user_consent
+    datetime applied_at
+    datetime deleted_at 
+    %% nullable
+}
+
+RDB-contracts {
+    string contract_id PK
+    string application_id
+    string user_id
+    datetime contract_start_date
+    datetime contract_end_date
+    string plan_id
+    float agreed_rate
+    int agreed_premium
+    string contract_terms 
+    %% 本来TEXT
+}
+
+%% --- MongoDB (NoSQL) ---
+Mongo-plans {
+    string plan_id PK
+    string name
+    string description
+    string image_key
+    string rates_by_period 
+    %% JSON形式の配列（注記）
+}
+
+Mongo-notifications {
+    string message_id PK
+    string title
+    string content
+    datetime published_at
+    datetime expires_at 
+    %% optional
+}
+
+Mongo-user_notifications_status {
+    string user_id PK
+    string read_message_ids 
+    %% 配列（注記）
+}
+
+Mongo-user_settings {
+    string user_id PK
+    string settings 
+    %% スキーマレスJSON（注記）
+}
+
+%% --- 関係 ---
+RDB-quotes ||--o{ RDB-applications : has
+RDB-applications ||--|| RDB-contracts : produces
+RDB-applications ||--|| RDB-quotes : refers
+RDB-quotes ||--|| Mongo-plans : refers
+RDB-contracts ||--|| Mongo-plans : refers
+Mongo-user_notifications_status ||--|| Mongo-notifications : read
+
 ```
 
-### plans テーブル
+## DDLテンプレート
+
+### 🟦 PostgreSQL用 DDL（マークダウン形式）
 
 ```sql
-CREATE TABLE plans (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  description TEXT,
-  monthly_premium INTEGER NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-### quotes テーブル
-
-```sql
+-- ユーザー見積もり情報を保持するテーブル
 CREATE TABLE quotes (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id),
-  plan_id INTEGER REFERENCES plans(id),
-  age INTEGER NOT NULL,
-  coverage INTEGER NOT NULL,
-  estimated_premium INTEGER NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    quote_id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    plan_id VARCHAR(64) NOT NULL,
+    payment_period INTEGER NOT NULL,
+    monthly_premium INTEGER NOT NULL,
+    refund_condition VARCHAR(255),
+    expected_refund INTEGER NOT NULL,
+    interest_rate_snapshot FLOAT NOT NULL,
+    valid_until TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
-
-### applications テーブル
 
 ```sql
+-- 保険申込データを管理するテーブル
 CREATE TABLE applications (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id),
-  quote_id INTEGER REFERENCES quotes(id),
-  agreement BOOLEAN NOT NULL,
-  status VARCHAR(50) DEFAULT 'pending',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    application_id VARCHAR(64) PRIMARY KEY,
+    quote_id VARCHAR(64) NOT NULL REFERENCES quotes(quote_id),
+    user_id VARCHAR(64) NOT NULL,
+    application_status VARCHAR(32) NOT NULL CHECK (application_status IN ('pending', 'submitted', 'deleted')),
+    user_consent BOOLEAN NOT NULL DEFAULT FALSE,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP
 );
 ```
 
-## MongoDB：ドキュメントスキーマと初期データ例
+```sql
+-- 保険契約情報を保持するテーブル
+CREATE TABLE contracts (
+    contract_id VARCHAR(64) PRIMARY KEY,
+    application_id VARCHAR(64) NOT NULL REFERENCES applications(application_id),
+    user_id VARCHAR(64) NOT NULL,
+    contract_start_date DATE NOT NULL,
+    contract_end_date DATE,
+    plan_id VARCHAR(64) NOT NULL,
+    agreed_rate FLOAT NOT NULL,
+    agreed_premium INTEGER NOT NULL,
+    contract_terms TEXT
+);
+```
 
-### スキーマ定義
+---
 
-```js
+### 🟩 MongoDB用 スキーマ定義例（JSON風）
+
+#### `plans` コレクション（保険商品プラン）
+
+```json
 {
-  product_id: Number,              // RDB上の保険商品IDに対応
-  faq: [
-    {
-      question: String,
-      answer: String
-    }
-  ],
-  coverage_items: [
-    {
-      label: String,               // 補償名（例：死亡保険金）
-      amount: String               // 金額など（例：1000万円）
-    }
+  "plan_id": "pension001",
+  "name": "個人年金保険",
+  "description": "老後の生活資金を確保するための保険です。",
+  "image_key": "pension001.jpg",
+  "rates_by_period": [
+    { "start_date": "2025-01-01", "end_date": "2025-12-31", "interest_rate": 1.5 },
+    { "start_date": "2026-01-01", "interest_rate": 1.3 }
   ]
 }
 ```
 
-### user_activity_logs スキーマ定義（ユーザー操作ログ）
+---
 
-```js
-{
-  user_id: Number,
-  action: String,                  // 操作内容（例："viewed_product"）
-  product_id: Number,              // 対象保険商品ID（該当すれば）
-  timestamp: ISODate               // 操作日時（UTC推奨）
-}
-```
-
-### system_messages スキーマ定義（アプリメッセージ）
-
-```js
-{
-  key: String,                     // メッセージ識別子（例："quote_success"）
-  message: String                  // 表示内容
-}
-```
-
-### plan_details コレクション（保険商品の詳細）
+#### `notifications` コレクション（お知らせ）
 
 ```json
 {
-  "plan_id": 1,
-  "coverage_items": [
-    { "type": "death", "amount": 1000000, "description": "死亡保険金" },
-    { "type": "hospital", "amount": 5000, "description": "入院日額" }
-  ],
-  "conditions": {
-    "age_limit": 60,
-    "exclusions": ["持病", "海外渡航中"]
+  "message_id": "notif001",
+  "title": "重要なお知らせ",
+  "content": "保険料が改定されます。",
+  "published_at": "2025-06-01T00:00:00Z",
+  "expires_at": "2025-12-31T00:00:00Z"
+}
+```
+
+---
+
+#### `user_notifications_status` コレクション（既読管理）
+
+```json
+{
+  "user_id": "user_abc123",
+  "read_message_ids": ["notif001", "notif002"]
+}
+```
+
+---
+
+#### `user_settings` コレクション（ユーザー設定）
+
+```json
+{
+  "user_id": "user_abc123",
+  "settings": {
+    "email_subscription": true,
+    "notification_sound": false,
+    "dark_mode": true
   }
 }
 ```
 
-### quote_logs コレクション（見積もり履歴）
+---
 
-```json
-{
-  "quote_id": 123,
-  "input": {
-    "age": 30,
-    "coverage": 1000000
-  },
-  "calculation_steps": [
-    "base: 5000",
-    "age_factor: +300",
-    "coverage_factor: +700"
-  ],
-  "result": 6000,
-  "timestamp": "2025-05-26T10:30:00Z"
-}
-```
+### 🧠 スキーマ設計の背景と選定理由
 
-## mongodb初期データ
+#### ✅ PostgreSQL（RDB）採用理由
 
-### product_details（保険商品に紐づく柔軟な詳細情報）
+| テーブル           | 理由                                   |
+| -------------- | ------------------------------------ |
+| `quotes`       | トランザクション管理が必要（計算値、履歴の一貫性保持）          |
+| `applications` | 申込ステータス・同一ユーザーの複数申込を整合的に管理する必要があるため  |
+| `contracts`    | 明確な契約履歴・期間管理・金額情報が必要なため。RDBで整合性保証が容易 |
 
-```json
-[
-  {
-    "product_id": 1,
-    "faq": [
-      { "question": "いつから補償されますか？", "answer": "契約翌日からです。" },
-      { "question": "途中解約できますか？", "answer": "はい、できますが返金条件があります。" }
-    ],
-    "coverage_items": [
-      { "label": "死亡保険金", "amount": "1000万円" },
-      { "label": "入院保険金", "amount": "日額5,000円" }
-    ]
-  },
-  {
-    "product_id": 2,
-    "faq": [],
-    "coverage_items": []
-  }
-]
-```
+* 各テーブルには `user_id` を保持し、Keycloakとのユーザー識別連携を担保
+* `interest_rate_snapshot` など、変動する参照情報は冗長に保持して一貫性を確保
 
-### user_activity_logs（ユーザーの行動履歴ログ）
+---
 
-```json
-[
-  {
-    "user_id": 101,
-    "action": "viewed_product",
-    "product_id": 1,
-    "timestamp": "2025-05-26T10:05:00Z"
-  },
-  {
-    "user_id": 101,
-    "action": "started_application",
-    "product_id": 1,
-    "timestamp": "2025-05-26T10:06:00Z"
-  }
-]
-```
+#### ✅ MongoDB（NoSQL）採用理由
 
-### system_messages（ユーザーに表示されるアプリメッセージ）
+| コレクション                      | 理由                                    |
+| --------------------------- | ------------------------------------- |
+| `plans`                     | 商品情報が階層・配列構造（利率履歴含む）を持ち、柔軟性が求められる     |
+| `notifications`             | 一括配信で多数の読み込みアクセスがあるため、スキーマの柔軟性と拡張性が必要 |
+| `user_notifications_status` | ユーザーごとに「お知らせの既読一覧」を持つため、更新・検索の柔軟性が必要  |
+| `user_settings`             | 設定項目が今後変化・増加する可能性があり、スキーマレスな保存が望ましい   |
 
-```json
-[
-  {
-    "key": "quote_success",
-    "message": "見積もりが正常に作成されました。"
-  },
-  {
-    "key": "application_submitted",
-    "message": "申込が完了しました。審査結果をお待ちください。"
-  }
-]
-```
-
-## mongoimport 用テンプレートコマンド(MongoDBサーバへJSONファイルをインポートする際に使うコマンド)
-
-```bash
-mongoimport --db insurance_app --collection product_details --file ./product_details.json --jsonArray
-```
-
-```bash
-mongoimport --db insurance_app --collection user_activity_logs --file ./user_activity_logs.json --jsonArray
-```
-
-```bash
-mongoimport --db insurance_app --collection system_messages --file ./system_messages.json --jsonArray
-```
+---
