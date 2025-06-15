@@ -141,30 +141,31 @@ sequenceDiagram
     participant Monitoring as 監視サービス
 
     %% --- アプリ起動時の認証チェック ---
-    User->>Frontend: アクセス
+    User->>Frontend: アクションの開始
     Frontend->>Frontend: SecureStorageから access_token / refresh_token を取得
     Frontend->>Frontend: access_token の有効期限を検証
 
     alt access_token 有効
         Frontend->>BFF: Authorization付きAPI呼び出し
-        BFF->>Keycloak: Token introspect / userinfo
+        BFF->>BFF: JWT署名を公開鍵で検証し、exp等をチェック
         BFF-->>Frontend: 200 OK
         Frontend-->>User: TOP画面へ遷移
 
     else access_token 期限切れ
         alt refresh_token 有効
-            Frontend->>Keycloak: POST /token（grant_type=refresh_token）
+            Frontend->>BFF: refresh_tokenを添えてリフレッシュ要求
+            BFF->>Keycloak: POST /token (grant_type=refresh_token)
             alt リフレッシュ成功
-                Keycloak-->>Frontend: 新しい access_token, refresh_token
+                Keycloak-->>BFF: 新しいトークン
+                BFF-->>Frontend: 新しいトークン
                 Frontend->>Frontend: トークンをSecureStorageに上書き
                 Frontend->>BFF: Authorization付きAPI呼び出し
-                BFF->>Keycloak: Token introspect / userinfo
-                Keycloak->>Keycloak: JWTトークン検証（署名・有効期限確認）
-                Keycloak->>BFF: OK
+                BFF->>BFF: JWT署名を公開鍵で検証し、exp等をチェック
                 BFF-->>Frontend: 200 OK
                 Frontend-->>User: TOP画面へ遷移
             else リフレッシュ失敗
-                Keycloak-->>Frontend: 401 Unauthorized
+                Keycloak-->>BFF: 401 Unauthorized
+                BFF-->>Frontend: 401 Unauthorized
                 Frontend->>Frontend: トークン削除
                 Frontend->>Keycloak: 認証ページへリダイレクト（Authorization Code + PKCE）
             end
@@ -172,20 +173,16 @@ sequenceDiagram
         else refresh_token も無効
             Frontend->>Keycloak: 認証ページへリダイレクト（Authorization Code + PKCE）
             %% --- 初回または手動ログイン ---
-            User->>Frontend: ログイン情報を入力
-            opt クライアントバリデーション
-                Frontend->>Frontend: 必須・形式・強度チェック
-            end
+            Frontend->>User: 認証ページ（Keycloak）へリダイレクト
+            User->>Keycloak: 認証情報を入力
             alt 認証成功
-                Keycloak-->>Frontend: 認可コード + state
-                Frontend->>Keycloak: 認可コード + PKCEでアクセストークン要求
+                Keycloak-->>User: 認可コード付きのリダイレクト
+                User->>Frontend: コード付きURLでアクセス（リダイレクト）
+                Frontend->>Keycloak: 認可コード + PKCEでトークン要求
                 Keycloak-->>Frontend: access_token, refresh_token
                 Frontend->>Frontend: SecureStorageに保存
                 Frontend->>BFF: Authorization付きAPI呼び出し
-                BFF->>Keycloak: Token introspect
-                Keycloak->>Keycloak: JWTトークン検証（署名・有効期限確認）
-                Keycloak->>BFF: OK
-                BFF-->>Frontend: 200 OK
+                BFF->>BFF: JWT署名を公開鍵で検証し、exp等をチェック
                 Frontend-->>User: TOP画面へ遷移
                 BFF->>Monitoring: login_success log
             else 認証失敗
@@ -231,6 +228,20 @@ sequenceDiagram
         Frontend->>Frontend: SecureStorageのクリーンアップ
         Frontend-->>User: ログイン画面へ遷移（冪等対応）
         Frontend->>Monitoring: logout_skipped (token_not_found)
+    end
+
+    %% --- KeycloakからのBackchannel Logoutトリガー ---
+    Note over Keycloak,BFF: ユーザーのセッション終了時に、BFFへバックチャネル通知
+    Keycloak->>BFF: POST /backchannel_logout（sub, sid, logout_token など）
+
+    BFF->>BFF: logout_tokenの署名・nonce等を検証
+    alt 有効なログアウト要求
+        BFF->>BFF: セッション（refresh_tokenなど）を破棄
+        BFF->>Monitoring: logout_by_backchannel log
+        BFF-->>Keycloak: 200 OK
+    else 不正なトークン
+        BFF->>Monitoring: invalid_backchannel_logout log
+        BFF-->>Keycloak: 400 Bad Request
     end
 ```
 
