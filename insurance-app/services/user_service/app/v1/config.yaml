@@ -1,0 +1,11 @@
+keycloak:
+  keycloak_base_url: "http://localhost:8080/realms/internet-service-relm"
+  discovery_url: "http://localhost:8080/realms/internet-service-relm/.well-known/openid-configuration"
+  client_id: "insurance-app"
+  client_secret: "6l2Qk0YxputLaDGNBuFMHUJ4h5MtpWub"
+  redirect_uri: "http://localhost:8000/auth/callback"
+
+session:
+  secret_key: "XWfh5GFl32X_0RzYc2p3v7h2-MorW-Xr0hI0prElB_c"
+  secure_cookie: false
+  redis_url: "redis://localhost:6379/0"

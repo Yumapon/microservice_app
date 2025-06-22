@@ -76,7 +76,7 @@ Mongo-notifications {
 
 Mongo-user_notifications_status {
     string user_id PK
-    string read_message_ids 
+    string read_message_ids FK
     %% 配列（注記）
 }
 

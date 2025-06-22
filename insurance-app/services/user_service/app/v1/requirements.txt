@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+httpx
+python-jose
+itsdangerous
+python-multipart
+pyyaml
+redis[asyncio]

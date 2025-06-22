@@ -1,2 +1,11 @@
 # 学習計画書は無視
 study_plan.md
+
+# venv
+venv/
+
+# python cache
+*.pyc
+__pycache__/
+
+.DS_Store

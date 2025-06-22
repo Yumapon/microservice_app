@@ -23,6 +23,9 @@ tags:
 
 components:
   securitySchemes:
+    openIdConnect:
+      type: openIdConnect
+      openIdConnectUrl: https://your-keycloak-domain/auth/realms/your-realm/.well-known/openid-configuration
     bearerAuth:
       type: http
       scheme: bearer
