@@ -3,15 +3,29 @@ from fastapi import APIRouter, Request, Depends
 from fastapi.responses import RedirectResponse, JSONResponse
 import httpx
 from urllib.parse import urlencode
-from session import create_session_and_set_cookie, require_active_session, clear_session, get_session
-from config import Config
+from app.dependencies.session_manager import create_session_and_set_cookie, clear_session, get_session
+from app.config.config import Config
+import json
+import base64
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 config = Config()
 
-@router.get("/auth/login")
-async def login(request: Request):
+def encode_state(state_dict):
+    json_str = json.dumps(state_dict)
+    return base64.urlsafe_b64encode(json_str.encode()).decode()
+
+def decode_state(state_str):
+    try:
+        json_str = base64.urlsafe_b64decode(state_str.encode()).decode()
+        return json.loads(json_str)
+    except Exception as e:
+        logger.warning(f"stateデコード失敗: {e}")
+        return {}
+
+@router.get("/login")
+async def login(request: Request, remember_me: bool = False):
     logger.info("【API】/auth/login 呼び出し")
     session = await get_session(request)
     if session:
@@ -19,22 +33,27 @@ async def login(request: Request):
         return JSONResponse(content={"message": "既にログイン済み", "user": session["user_info"]})
 
     authorize_url = request.app.state.oidc_client.endpoints["authorization_endpoint"]
+    state_param = encode_state({"remember_me": remember_me})
+
     params = {
         "client_id": config.keycloak["client_id"],
         "response_type": "code",
         "scope": "openid profile email",
-        "redirect_uri": config.keycloak["redirect_uri"]
+        "redirect_uri": config.keycloak["redirect_uri"],
+        "state": state_param
     }
     redirect_url = f"{authorize_url}?{urlencode(params)}"
     logger.info("Keycloakの認証画面にリダイレクト")
     return RedirectResponse(url=redirect_url)
 
-@router.get("/auth/callback")
-async def auth_callback(request: Request, code: str):
+@router.get("/callback")
+async def auth_callback(request: Request, code: str, state: str = None):
     logger.info("【API】/auth/callback 呼び出し")
     oidc_client = request.app.state.oidc_client
 
     logger.info(f"認可コード受信: {code}")
+    state_data = decode_state(state) if state else {}
+    remember_me = state_data.get("remember_me", False)
 
     data = {
         "grant_type": "authorization_code",
@@ -65,17 +84,14 @@ async def auth_callback(request: Request, code: str):
         "user_info": userinfo_data
     }
 
-    response = RedirectResponse(url="/top")
-    await create_session_and_set_cookie(response, session_data)
+    response = RedirectResponse(url="/api/v1/top")
+    # remember_me に応じて有効期限設定（例: 30日 or 30分）
+    max_age = config.session["rememberme_ttl"] if remember_me else config.session["normal_ttl"]
+    await create_session_and_set_cookie(response, session_data, max_age)
     logger.info("セッション保存・クッキーセット完了 -> /topへリダイレクト")
     return response
 
-@router.get("/top")
-async def top(user_session: dict = Depends(require_active_session)):
-    logger.info("【API】/top 呼び出し（認証済み）")
-    return JSONResponse(content={"message": "ようこそ！", "user": user_session["user_info"]})
-
-@router.post("/auth/logout")
+@router.post("/logout")
 async def logout(request: Request):
     logger.info("【API】/auth/logout 呼び出し")
     session = await get_session(request)

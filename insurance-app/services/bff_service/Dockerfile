@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y gcc libffi-dev libssl-dev && rm -rf /va
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY ./v1/requirements.txt .
 RUN pip install --upgrade pip
 RUN pip install --prefix=/install -r requirements.txt
 

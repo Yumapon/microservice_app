@@ -1,68 +1,34 @@
 import logging
-import uuid
-import json
 import time
-from fastapi import Request, Response, HTTPException, status
-from itsdangerous import URLSafeSerializer, BadSignature
+import json
 from jose import jwt
-from config import Config
-import redis.asyncio as redis
+from fastapi import Request, HTTPException, status
+from app.dependencies.refresh_token import refresh_token
+from app.dependencies.oidc_client import OIDCClient
+from app.dependencies.session_manager import get_session
+from itsdangerous import URLSafeSerializer, BadSignature
 import httpx
+from app.config.config import Config
+import redis.asyncio as redis
 
 logger = logging.getLogger(__name__)
 config = Config()
 
-serializer = URLSafeSerializer(config.session["secret_key"])
 SESSION_COOKIE_NAME = "bff_session_id"
 
-redis_client = redis.from_url(config.session["redis_url"])
+async def get_session_data(request: Request):
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        logger.warning("セッションIDがありません")
+        raise HTTPException(status_code=401, detail="ログインが必要です")
 
-# セッション作成
-async def create_session_and_set_cookie(response: Response, data: dict):
-    session_id = str(uuid.uuid4())
-    session_token = serializer.dumps(session_id)
+    session_manager = request.app.state.session_manager
+    session_data = await session_manager.get_session(session_id)
+    if not session_data:
+        logger.warning("セッションが無効です")
+        raise HTTPException(status_code=401, detail="セッション期限切れ")
 
-    await redis_client.setex(session_id, 1800, json.dumps(data))
-    response.set_cookie(
-        SESSION_COOKIE_NAME,
-        session_token,
-        httponly=True,
-        secure=config.session["secure_cookie"],
-        samesite="Lax",
-        path="/"
-    )
-    logger.info(f"新セッション発行: {session_id}")
-
-# セッション取得
-async def get_session(request: Request):
-    token = request.cookies.get(SESSION_COOKIE_NAME)
-    if not token:
-        logger.info("セッションIDクッキーなし")
-        return None
-    try:
-        session_id = serializer.loads(token)
-        session_data_json = await redis_client.get(session_id)
-        if not session_data_json:
-            logger.warning(f"RedisにセッションIDなし: {session_id}")
-            return None
-        logger.info(f"セッション取得成功: {session_id}")
-        return json.loads(session_data_json)
-    except BadSignature:
-        logger.warning("セッションID署名検証失敗")
-        return None
-
-# セッション削除
-async def clear_session(request: Request, response: Response):
-    token = request.cookies.get(SESSION_COOKIE_NAME)
-    if token:
-        try:
-            session_id = serializer.loads(token)
-            await redis_client.delete(session_id)
-            logger.info(f"Redisのセッション {session_id} を削除しました")
-        except BadSignature:
-            logger.warning("署名検証失敗：不正なセッショントークン")
-    response.delete_cookie(SESSION_COOKIE_NAME)
-    logger.info("セッションIDクッキー削除完了")
+    return session_id, session_data
 
 # アクセストークン期限確認 (5分前バッファ)
 def is_token_expiring_soon(access_token: str, leeway_seconds=300):
@@ -80,8 +46,7 @@ def is_token_expiring_soon(access_token: str, leeway_seconds=300):
         logger.warning(f"トークン期限確認失敗: {e}")
         return True
 
-# 共通認証依存関数
-async def require_active_session(request: Request):
+async def get_valid_session(request: Request):
     session = await get_session(request)
     if not session:
         logger.warning("認証失敗：セッションが存在しません")
@@ -89,8 +54,6 @@ async def require_active_session(request: Request):
 
     if is_token_expiring_soon(session["access_token"]):
         logger.info("アクセストークン更新処理を実施")
-
-        from oidc import OIDCClient
         oidc_client: OIDCClient = request.app.state.oidc_client
 
         data = {

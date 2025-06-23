@@ -1,8 +1,11 @@
 import logging
-from fastapi import FastAPI
-import routes
-from oidc import OIDCClient
-from config import Config
+from fastapi import FastAPI, Depends
+from app.dependencies.auth_guard import get_valid_session
+from app.routes import auth, business
+from app.dependencies.oidc_client import OIDCClient
+from app.config.config import Config
+
+
 
 # 設定読み込み
 config = Config()
@@ -23,7 +26,8 @@ oidc_client = OIDCClient(
 
 app = FastAPI()
 app.state.oidc_client = oidc_client
-app.include_router(routes.router)
+app.include_router(auth.router, prefix="/api/v1/auth")
+app.include_router(business.router, prefix="/api/v1")
 
 @app.on_event("startup")
 async def startup_event():
@@ -32,6 +36,6 @@ async def startup_event():
     logger.info("=== OIDCディスカバリー情報と公開鍵 初期化完了 ===")
 
 @app.get("/protected")
-async def protected():
+async def protected(user_session: dict = Depends(get_valid_session)):
     logger.info("【API】/protected 呼び出し")
     return {"message": "これは認証保護されたAPIです。"}
