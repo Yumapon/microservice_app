@@ -10,79 +10,114 @@
 
     <style>
       :root {
-        --primary: #0077cc;
-        --accent: #f4f7fb;
-        --header-height: 60px;
+        --lego-blue: #0055bf;
+        --lego-yellow: #fcd116;
+        --lego-red: #da291c;
+        --lego-white: #ffffff;
+        --lego-gray: #f4f4f4;
       }
 
       body {
         margin: 0;
         font-family: "Noto Sans JP", sans-serif;
-        background-color: #fff;
-        color: #222;
+        background-color: var(--lego-white);
+        color: #333;
       }
 
       header {
-        background-color: var(--primary);
-        color: #fff;
-        padding: 1rem 2rem;
+        background-color: var(--lego-blue);
+        color: white;
+        padding: 1.2rem 2rem;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        height: var(--header-height);
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       header .title {
-        font-size: 1.4rem;
-        font-weight: 700;
+        font-size: 1.6rem;
+        font-weight: bold;
       }
 
       .loading {
         text-align: center;
-        font-size: 1.1rem;
+        font-size: 1.2rem;
         padding: 2rem;
-        color: #777;
+        color: #555;
       }
 
       #swagger-ui {
-        margin-top: 20px;
+        margin-top: 30px;
       }
 
-      /* Swagger UI overrides */
       .swagger-ui .topbar {
         display: none;
       }
 
       .swagger-ui .scheme-container {
-        background-color: var(--accent);
+        background-color: var(--lego-gray);
         padding: 1rem;
-        border-radius: 5px;
-        margin-bottom: 20px;
+        border-radius: 10px;
+        margin: 0 1rem 20px 1rem;
+        box-shadow: 0 0 5px rgba(0, 0, 0, 0.05);
       }
 
       .swagger-ui .info {
-        margin: 2rem 0 1rem 0;
+        margin: 2rem 1rem 1rem 1rem;
       }
 
-      .swagger-ui .info hgroup.main {
-        margin-bottom: 0.5rem;
+      .swagger-ui .info .title {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--lego-red);
       }
 
       .swagger-ui .info .title small {
-        background: #efefef;
-        color: #333;
-        padding: 2px 8px;
-        border-radius: 4px;
+        background: var(--lego-yellow);
+        color: black;
+        padding: 2px 10px;
+        border-radius: 10px;
         margin-left: 10px;
-        font-size: 0.8rem;
+        font-size: 0.9rem;
+      }
+
+      .swagger-ui .opblock-tag {
+        background-color: var(--lego-blue);
+        border-radius: 8px;
+        color: white;
+        font-size: 1.1rem;
+        font-weight: bold;
+        padding: 0.6rem 1rem;
+        margin: 0 0 1rem 0;
+      }
+
+      .swagger-ui .opblock {
+        border-radius: 12px;
+        border: 1px solid #ddd;
+        margin: 0.5rem 1rem;
+      }
+
+      .swagger-ui .btn,
+      .swagger-ui .authorize {
+        border-radius: 20px !important;
+        font-weight: bold;
+        background-color: var(--lego-yellow) !important;
+        color: black !important;
+        border: none !important;
+        transition: all 0.2s ease;
+      }
+
+      .swagger-ui .btn:hover,
+      .swagger-ui .authorize:hover {
+        background-color: #ffd900 !important;
+        box-shadow: 0 0 0 2px #ffea00 inset;
       }
 
       @media (max-width: 768px) {
         header {
           flex-direction: column;
-          height: auto;
-          padding: 1rem;
+          align-items: flex-start;
+          gap: 0.5rem;
         }
       }
     </style>
@@ -91,11 +126,11 @@
   <body>
     <header>
       <div class="title">
-        <i class="fa-solid fa-shield-halved"></i> 保険アプリ API ドキュメント
+        <i class="fa-solid fa-cubes"></i> 保険アプリ API ドキュメント
       </div>
     </header>
 
-    <div class="loading" id="loading">🚀 API仕様を読み込み中です...</div>
+    <div class="loading" id="loading">🧱 API仕様を読み込み中です...</div>
     <div id="swagger-ui" style="display: none;"></div>
 
     <script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script>
