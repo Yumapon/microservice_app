@@ -17,3 +17,26 @@
 | 保守性 | OIDCClientのエラーハンドリング統一化（例外クラス化） |
 | 監視運用 | セッション数・リフレッシュ回数・認証失敗件数等のメトリクスをPrometheus連携 |
 | ユーザ体験 | トークン期限直前の自動更新のリトライ耐性（通信失敗時の一時待機等） |
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Browser
+    participant BFF
+    participant Keycloak
+
+    User->>Browser: ログインボタン押下
+    Browser->>BFF: GET /auth/login?remember_me=true
+    BFF->>Keycloak: 認可コードリクエスト + remember_meパラメータ付与
+    Keycloak->>Browser: 認証画面
+    User->>Keycloak: ID/パスワード入力
+    Keycloak->>Browser: 認可コード付きリダイレクト
+    Browser->>BFF: /auth/callback?code=xxxx
+
+    BFF->>Keycloak: トークン交換リクエスト
+    Keycloak->>BFF: アクセストークン
+    BFF->>Browser: 業務画面表示（ただしBFFはトークンをクライアントに渡さない）
+
+    Keycloak-->>Browser: セッションクッキー (KEYCLOAK_IDENTITY等) 保存
+
+```

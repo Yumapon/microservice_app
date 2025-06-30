@@ -1,0 +1,476 @@
+openapi: 3.0.3
+info:
+  title: 保険アプリ API
+  description: このAPIは保険アプリにおけるユーザー認証、見積もり、申込、契約確認などの機能を提供します。
+  version: 1.0.0
+servers:
+- url: https://api.example.com
+
+tags:
+- name: PublicPlans
+  description: 公開保険商品API
+- name: Auth
+  description: セッションベースの認証処理
+- name: Quotation
+  description: 保険見積もり関連API
+- name: Application
+  description: 保険申込関連API
+
+paths:
+  /api/v1/public/plans:
+    get:
+      tags:
+        - PublicPlans
+      summary: 保険商品一覧を取得
+      description: 認証不要で取得できる保険商品の一覧を返します。
+      operationId: getPublicPlans
+      responses:
+        '200':
+          description: 保険商品一覧の取得に成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Plan'
+              example:
+                value:
+                  - plan_id: "pension001"
+                    name: "個人年金保険"
+                    description: "老後の生活資金を確保するための保険です。"
+                    image_key: "pension001.jpg"
+                  - plan_id: "education001"
+                    name: "学資保険"
+                    description: "お子様の教育資金を準備するための保険です。"
+                    image_key: "education001.jpg"
+        '500':
+          description: サーバーエラー
+
+  /api/v1/auth/login:
+    get:
+      tags:
+        - Auth
+      summary: ログイン処理（Keycloakへリダイレクト）
+      description: 未ログイン状態の場合、Keycloakのログイン画面へリダイレクトします。すでにログイン済みの場合はJSONで応答。
+      parameters:
+        - name: remember_me
+          in: query
+          description: ログイン状態を保持するかどうか
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: すでにログイン済み
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: 既にログイン済み
+                  user:
+                    type: object
+                    example:
+                      sub: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                      name: "山田 太郎"
+                      email: "taro@example.com"
+        "307":
+          description: Keycloakログイン画面へリダイレクト
+          headers:
+            Location:
+              description: リダイレクト先のURL
+              schema:
+                type: string
+
+  /api/v1/auth/callback:
+    get:
+      tags:
+        - Auth
+      summary: 認証コードのコールバック処理
+      description: Keycloakからの認可コードを受け取り、セッションを作成し `/api/v1/top` にリダイレクトします。
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: Keycloakから送られる認可コード
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          description: Base64エンコードされたstate情報（remember_me含む）
+          schema:
+            type: string
+      responses:
+        "307":
+          description: ログイン後、アプリケーションTOPへリダイレクト
+          headers:
+            Location:
+              description: リダイレクト先URL（例：/api/v1/top）
+              schema:
+                type: string
+
+  /api/v1/auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: ログアウト処理
+      description: セッションとトークンを破棄し、ログアウト完了メッセージを返却します。
+      responses:
+        "200":
+          description: ログアウト成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: ログアウト完了
+
+  /api/v1/quotes/pension:
+    post:
+      tags:
+        - Quotation
+      summary: 個人年金保険の見積もり取得
+      description: ユーザーが入力した条件に基づいて、見積もり結果を返却します。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PensionQuoteRequestModel"
+            example:
+              value:
+                birth_date: "1990-01-01"
+                gender: "男"
+                monthly_premium: 20000
+                payment_period_years: 20
+                tax_deduction_enabled: true
+      responses:
+        "200":
+          description: 見積もり結果の返却
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PensionQuoteResponseModel"
+              example:
+                value:
+                  quote_id: "0d853368-4bdf-49cf-bfcd-b1fc313dabdc"
+                  contract_date: "2025-07-01"
+                  contract_interest_rate: 1.2
+                  total_paid_amount: 9000000
+                  payment_period_years: 30
+                  pension_start_age: 28
+                  annual_tax_deduction: 40000
+                  scenarios:
+                    - scenario_name: "標準"
+                      assumed_interest_rate: 1.2
+                      total_refund_amount: 9108000
+                      annual_annuity: 910800
+                      lump_sum_amount: 9108000
+                      refund_on_15_years: 4554000
+                      refund_rate_on_15_years: 101.2
+                    - scenario_name: "最低保証"
+                      assumed_interest_rate: 0.5
+                      total_refund_amount: 9045000
+                      annual_annuity: 904500
+                      lump_sum_amount: 9045000
+                      refund_on_15_years: 4522500
+                      refund_rate_on_15_years: 100.5
+                    - scenario_name: "高金利"
+                      assumed_interest_rate: 1.5
+                      total_refund_amount: 9135000
+                      annual_annuity: 913500
+                      lump_sum_amount: 9135000
+                      refund_on_15_years: 4567500
+                      refund_rate_on_15_years: 101.5
+        "400":
+          description: リクエスト形式不正または計算不可
+        "401":
+          description: 認証失敗（アクセストークン無効）
+
+  /api/v1/my/quotes:
+    get:
+      tags:
+        - Quotation
+      summary: ログインユーザーの見積もり一覧取得
+      description: ログイン中のユーザーに紐づく個人年金保険の見積もりデータ一覧を返却します。
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 見積もりデータの配列
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PensionQuoteResponseModel'
+        '401':
+          description: 認証失敗（アクセストークン不正）
+        '500':
+          description: サーバ内部エラー
+
+  /api/v1/my/quotes/{quote_id}:
+    get:
+      tags:
+        - Quotation
+      summary: ログインユーザーの特定見積もり取得
+      description: ログインユーザーが過去に作成した特定の見積もりを取得します。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: quote_id
+          in: path
+          required: true
+          description: 見積もりID（UUID）
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 見積もりデータの返却
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PensionQuoteResponseModel'
+        '401':
+          description: 認証失敗
+        '403':
+          description: 他人の見積もりを参照しようとした場合
+        '404':
+          description: 見積もりが存在しない
+        '500':
+          description: サーバ内部エラー
+
+    put:
+      tags:
+        - Quotation
+      summary: ログインユーザーの見積もり状態を更新
+      description: 指定した見積もりを「申込済み（applied）」などに状態変更します。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: quote_id
+          in: path
+          required: true
+          description: 見積もりID（UUID）
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 状態更新後の見積もりデータ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PensionQuoteResponseModel'
+        '401':
+          description: 認証失敗
+        '403':
+          description: 他人の見積もりを更新しようとした場合
+        '404':
+          description: 見積もりが存在しない
+        '500':
+          description: サーバ内部エラー
+
+  /api/v1/applications/{quote_id}:
+    post:
+      tags:
+        - Application
+      summary: 保険契約申込
+      description: 指定された見積もりIDに基づき、契約申込を行います。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: quote_id
+          in: path
+          required: true
+          description: 見積もりID（UUID）
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: 申込成功時のレスポンス
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationResponseModel"
+              example:
+                application_id: "b7d9c8f0-5c8d-4c82-9364-b1d2c8362ea5"
+                quote_id: "0d853368-4bdf-49cf-bfcd-b1fc313dabdc"
+                status: "applied"
+        "401":
+          description: 認証失敗（アクセストークン不正または欠如）
+        "403":
+          description: 他人の見積もりに対する申込を試みた場合
+        "404":
+          description: 指定された見積もりが存在しない
+        "500":
+          description: サーバ内部エラー
+
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Plan:
+      type: object
+      properties:
+        plan_id:
+          type: string
+          example: "pension001"
+          description: 保険商品ID
+        name:
+          type: string
+          example: "個人年金保"
+          description: 保険商品名
+        description:
+          type: string
+          example: "老後の生活資金を確保するための保険です。"
+          description: 商品の説明
+        image_key:
+          type: string
+          example: "pension001.jpg"
+          description: S3上の画像キー
+      required:
+        - plan_id
+        - name
+        - description
+        - image_key
+    PensionQuoteRequestModel:
+      type: object
+      properties:
+        birth_date:
+          type: string
+          format: date
+          description: 契約者の生年月日
+        gender:
+          type: string
+          enum: ["男", "女"]
+          description: 性別
+        monthly_premium:
+          type: integer
+          minimum: 10000
+          maximum: 50000
+          multipleOf: 1000
+          description: 月額保険料（¥10,000〜¥50,000）
+        payment_period_years:
+          type: integer
+          minimum: 15
+          maximum: 45
+          description: 払込期間（15年以上）
+        tax_deduction_enabled:
+          type: boolean
+          description: 税制適格特約の有無
+      required:
+        - birth_date
+        - gender
+        - monthly_premium
+        - payment_period_years
+        - tax_deduction_enabled
+
+    PensionQuoteResponseModel:
+      type: object
+      properties:
+        quote_id:
+          type: string
+          description: 見積もりID
+        contract_date:
+          type: string
+          format: date
+          description: 契約開始日
+        contract_interest_rate:
+          type: number
+          format: float
+          description: 標準利率
+        total_paid_amount:
+          type: integer
+          description: 払込総額
+        payment_period_years:
+          type: integer
+          description: 払込期間
+        pension_start_age:
+          type: integer
+          description: 年金開始年齢
+        annual_tax_deduction:
+          type: integer
+          description: 年間最大税控除額
+        scenarios:
+          type: array
+          items:
+            $ref: "#/components/schemas/PensionQuoteScenarioModel"
+      required:
+        - quote_id
+        - contract_date
+        - contract_interest_rate
+        - total_paid_amount
+        - payment_period_years
+        - pension_start_age
+        - annual_tax_deduction
+        - scenarios
+
+    PensionQuoteScenarioModel:
+      type: object
+      properties:
+        scenario_name:
+          type: string
+          description: シナリオ名（高金利、標準、最低保証）
+        assumed_interest_rate:
+          type: number
+          format: float
+          description: 想定利率
+        total_refund_amount:
+          type: integer
+          description: 累計受取額
+        annual_annuity:
+          type: integer
+          description: 年額年金
+        lump_sum_amount:
+          type: integer
+          description: 一括受取額
+        refund_on_15_years:
+          type: integer
+          description: 15年時点の返戻額
+        refund_rate_on_15_years:
+          type: number
+          format: float
+          description: 15年時点の返戻率（%）
+      required:
+        - scenario_name
+        - assumed_interest_rate
+        - total_refund_amount
+        - annual_annuity
+        - lump_sum_amount
+        - refund_on_15_years
+        - refund_rate_on_15_years
+
+    ApplicationResponseModel:
+      type: object
+      properties:
+        application_id:
+          type: string
+          description: 発行された申込ID（UUID形式）
+          example: "b7d9c8f0-5c8d-4c82-9364-b1d2c8362ea5"
+        quote_id:
+          type: string
+          description: 申込元となった見積もりID
+          example: "0d853368-4bdf-49cf-bfcd-b1fc313dabdc"
+        status:
+          type: string
+          description: 申込ステータス（例：applied）
+          example: "applied"
+      required:
+        - application_id
+        - quote_id
+        - status

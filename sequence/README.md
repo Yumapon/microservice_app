@@ -251,27 +251,28 @@ sequenceDiagram
 sequenceDiagram
     participant User as ユーザー
     participant Frontend as フロントエンド
-    participant API as FastAPI (保険サービス(一般公開))
-    participant DB as MongoDB (商品データ)
-    participant S3 as S3（画像保管）
+    participant API as FastAPI (public_plans_service)
+    participant DB as MongoDB（商品データ）<br>db: insurance<br>collection: plans
+    participant S3 as S3（画像ストレージ）<br>bucket: insurance-app-public-img
 
     User->>Frontend: TOP画面を開く
 
-    Frontend->>API: GET /public/plans
+    Frontend->>API: GET /api/v1/public/plans
     Note over Frontend,API: 保険商品一覧の取得は認証不要
-    API->>DB: find({}) on plans
-    DB-->>API: 商品一覧データ（画像キー含む）
-    API-->>Frontend: 商品一覧JSON（画像キー付き）
+    API->>DB: collection.find()
+    DB-->>API: 保険商品一覧データ<br>plan_id, name, description, image_key
+    API->>API: JSON形式に整形
+    API-->>Frontend: 保険商品一覧JSON
 
-    par 画面構築と画像ロード
-        Frontend->>User: 商品名・説明などを即時表示
-        Frontend->>S3: 非同期で画像取得（順次）
+    par 商品一覧のUI構築と画像ロード
+        Frontend->>User: 商品名・説明などを即時表示（テキスト）
+        Frontend->>S3: 画像取得リクエスト（非同期）
         alt 画像取得成功
-            S3-->>Frontend: 商品画像
-            Frontend->>User: 画像を反映
+            S3-->>Frontend: 商品画像バイナリ
+            Frontend->>User: DOMに画像を反映
         else 画像取得失敗
             S3-->>Frontend: 404 Not Found
-            Frontend->>User: デフォルト画像表示
+            Frontend->>User: デフォルト画像を表示
         end
     end
 ```
@@ -281,100 +282,96 @@ sequenceDiagram
 sequenceDiagram
     participant User as ログイン済みユーザー
     participant Frontend as フロントエンド
-    participant API as FastAPI (見積もりサービス)
+    participant BFFAPI as BFF (API Gateway)
+    participant API as FastAPI (quotation_service)
     participant Keycloak as Keycloak（IdP）
-    participant DB1 as RDB (見積もりデータ)
-    participant DB2 as MongoDB (商品データ)
+    participant RDB as QuoteRDB (見積もりデータ)
+    participant MongoDB as MongoDB（利率データ）<br>db: rate_db<br>collection: interest_rates
 
     User->>Frontend: TOP画面で保険プランを選択（例：個人年金）
     Frontend->>User: 見積もり入力画面を表示
-    User->>Frontend: 条件入力（支払い期間、月額費用、払い戻し条件）
+    User->>Frontend: 条件入力 <br> 契約者の生年月日、性別、月額保険料、払込期間、個人年金保険料税制適格特約の有無
     opt クライアントバリデーション
         Frontend->>Frontend: 必須・形式・強度チェック
     end
     Frontend->>User: 確認画面を表示
     User->>Frontend: 「見積もり開始」ボタンを押下
 
-    Frontend->>API: POST /quotes/{保険商品ごとのPATH}（見積もりデータ + Authorizationヘッダ）
-    Note over Frontend,API: 学資保険：educational_endowmnet_insurance<br>個人年金保険：personal_pension_insurance
-    API->>Keycloak: トークン検証リクエスト
-    alt トークン有効
-        Keycloak-->>API: トークン有効
-        API->>Keycloak: ユーザー情報取得（user_idなど）
-        Keycloak-->>API: ユーザープロフィール
-        API->>DB2: find({plan_id: $plan_id}) on plans
-        DB2-->>API: プラン情報（利率など、変動性のあるもの）
-
-        API->>API: 見積もり作成ロジック
-        alt 作成成功
-            API->>DB1: INSERT 見積もり結果（有効期限など含む）
-            DB1-->>API: 保存完了レスポンス
-            API-->>Frontend: 見積もり結果データ
+    Frontend->>BFFAPI: POST /api/v1/quotes/{保険商品ごとのPATH} <br> 見積もりデータ + session id
+    Note over Frontend,BFFAPI: 学資保険：education <br>個人年金保険：pension
+    BFFAPI->>BFFAPI: session idより、AccessTokenとRefreshTokenを取得
+    BFFAPI->>Keycloak: Token検証用の公開鍵を取得
+    Keycloak-->>BFFAPI: 公開鍵
+    BFFAPI->>BFFAPI: AccessTokenの検証
+    alt AccessToken有効
+        BFFAPI->>API: POST /api/v1/quotes/{保険商品ごとのPATH} <br> 見積もりデータ + AuthorizationヘッダにAccessToken 
+        API->>Keycloak: Token検証用の公開鍵を取得
+        Keycloak-->>API: 公開鍵
+        API->>API: AccessTokenの検証および、実行権限の確認(認可) 
+        alt AccessToken有効
+            API->>MongoDB: collection.find_one(start_date,end_date, rate_type, product_type)
+            MongoDB-->>API: プラン情報（最低保証利率、予定利率）
+            API->>API: 見積もり作成ロジック
+            alt 作成成功
+                API->>RDB: INSERT 見積もり結果
+                RDB-->>API: 保存完了レスポンス
+                API-->>Frontend: 見積もり結果データ
         else 作成失敗
             API-->>Frontend: 400 Bad Request（計算不可 or 入力不備）
         end
-    else トークン無効・期限切れ
-        Keycloak-->>API: トークン無効
-        API-->>Frontend: 401 Unauthorized
-        Frontend->>User: ログイン画面へリダイレクト（再認証促す）
+        else AccessToken無効・期限切れ
+            API-->BFFAPI: 401 Unauthorized
+        end
+    else AccessToken無効・期限切れ
+        BFFAPI->>BFFAPI: RefreshTokenの期限検証
+        alt RefreshToken有効
+            BFFAPI->>Keycloak: AccessToken発行リクエスト
+            Keycloak-->>BFFAPI: AccessToken発行
+        else RefreshToken無効
+            BFFAPI-->>Frontend: 401 Unauthorized
+            Frontend->>User: ログイン画面へリダイレクト（再認証促す）
+        end
     end
 ```
 
-## 保険契約申込（見積もり→契約の流れ）
+## 保険契約申込（既存の見積もり情報をもとに契約申し込み）
 
 ```mermaid
 sequenceDiagram
-    participant User as ユーザー
+    participant User as ログイン済みユーザー
     participant Frontend as フロントエンド
-    participant API as FastAPI (申込サービス)
+    participant BFFAPI as BFF (API Gateway)
+    participant API as FastAPI (application_service)
+    participant API2 as FastAPI (quotation_service)
     participant Keycloak as Keycloak（IdP）
-    participant DB1 as RDB (見積もりデータ)
-    participant DB2 as MongoDB (商品データ)
-    participant DB3 as RDB (申込データ)
+    participant RDB as ApplicationRDB (申込データ)
+    participant RDB2 as QuoteRDB (見積もりデータ)
+    participant MongoDB as MongoDB（利率データ）<br>db: rate_db<br>collection: interest_rates
 
+    Frontend->>User: 見積もりプランを表示（見積もりからそのまま申し込みor過去の見積もり一覧から選択の2パターン）
+    User->>Frontend: 申し込みボタンを押下
 
-    User->>Frontend: TOP画面で保険プランを選択（例：個人年金）
-    Frontend->>User: 見積もり画面を表示
-    User->>Frontend: 条件入力（支払い期間、月額費用、払い戻し条件）
-    opt クライアントバリデーション
-        Frontend->>Frontend: 必須・形式・強度チェック
-    end
-    Frontend->>User: 確認画面を表示
-    User->>Frontend: 見積もり開始ボタンを押下する
-    Frontend->>API: POST /quotes/{保険商品ごとのPATH}（見積もりデータ + Authorizationヘッダ）
-    Note over Frontend,API: 学資保険：educational_endowmnet_insurance<br>個人年金保険：personal_pension_insurance
-    API->>Keycloak: トークン検証リクエスト
-    alt トークン有効
-        Keycloak-->>API: トークン有効
-        API->>Keycloak: ユーザー情報取得（user_idなど）
-        Keycloak-->>API: ユーザープロフィール
-        API->>DB2: find({plan_id: $plan_id}) on plans
-        DB2-->>API: プラン情報（利率など、変動性のあるもの）
-
-        API->>API: 見積もり作成ロジック
-        alt 作成成功
-            API->>DB1: INSERT 見積もり結果（有効期限など含む）
-            DB1-->>API: 保存完了レスポンス
-            API-->>Frontend: 見積もり結果データ
-        else 作成失敗
-            API-->>Frontend: 400 Bad Request（計算不可 or 入力不備）
-        end
-    else トークン無効・期限切れ
-        Keycloak-->>API: トークン無効
-        API-->>Frontend: 401 Unauthorized
-        Frontend->>User: ログイン画面へリダイレクト（再認証促す）
-    end
-    Frontend->>API: POST /application (見積もり結果 + 認証トークン)
-    API->>Keycloak: トークン検証リクエスト
-    alt トークン有効
-        Keycloak-->>API: トークン有効
-        API->>DB3: 申込データ保存
-        DB3-->>API: 保存完了レスポンス
-        API-->>Frontend: 申込完了レスポンス（申込番号など）
+    Frontend->>BFFAPI: POST /api/v1/applications/{quote_id} <br> session id
+    BFFAPI->>BFFAPI: session idより、AccessTokenとRefreshTokenを取得
+    BFFAPI->>Keycloak: Token検証用の公開鍵を取得
+    Keycloak-->>BFFAPI: 公開鍵
+    BFFAPI->>BFFAPI: AccessTokenの検証
+    alt AccessToken有効
+        BFFAPI->>API: POST /api/v1/applications/{quote_id} <br> 見積もりデータ + AuthorizationヘッダにAccessToken 
+        API->>API2: GET /api/v1/quote/{quote_id} + AuthorizationヘッダにAccessToken 
+        API2-->API: 見積もり結果データ
+        API->>API: 申し込み可能かチェック
+        API->>API2: PUT /api/v1/quote/{quote_id} + AuthorizationヘッダにAccessToken <br>申し込み済みに変更
+        API2->>RDB2: UPDATE stateをappliedへ変更
+        RDB2-->>API2: 保存完了レスポンス
+        API->>RDB: INSERT 申し込み情報
+        RDB-->>API: 保存完了レスポンス
+        API-->>BFFAPI:申込完了レスポンス（申込番号など）
+        BFFAPI-->>Frontend: 申込完了レスポンス（申込番号など）
         Frontend->>User: 申込完了画面を表示
     else トークン無効・期限切れ
-        Keycloak-->>API: トークン無効
-        API-->>Frontend: 401 Unauthorized
+        Keycloak-->>BFFAPI: トークン無効
+        BFFAPI-->>Frontend: 401 Unauthorized
         Frontend->>User: ログイン画面へリダイレクト（再認証促す）
     end
 ```

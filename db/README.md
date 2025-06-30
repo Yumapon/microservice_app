@@ -100,32 +100,58 @@ Mongo-user_notifications_status ||--|| Mongo-notifications : read
 
 ### 🟦 PostgreSQL用 DDL（マークダウン形式）
 
+* 見積もり情報を格納するテーブル
+
 ```sql
--- ユーザー見積もり情報を保持するテーブル
+DROP TABLE IF EXISTS quotes;
+
 CREATE TABLE quotes (
-    quote_id VARCHAR(64) PRIMARY KEY,
-    user_id VARCHAR(64) NOT NULL,
-    plan_id VARCHAR(64) NOT NULL,
-    payment_period INTEGER NOT NULL,
-    monthly_premium INTEGER NOT NULL,
-    refund_condition VARCHAR(255),
-    expected_refund INTEGER NOT NULL,
-    interest_rate_snapshot FLOAT NOT NULL,
-    valid_until TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    quote_id UUID PRIMARY KEY,                      -- 見積もりID
+    user_id TEXT NOT NULL,                          -- ユーザーID
+
+    -- ユーザーの契約条件
+    birth_date DATE NOT NULL,                       -- 生年月日
+    gender TEXT NOT NULL,                           -- 性別
+    monthly_premium INTEGER NOT NULL,               -- 月額保険料
+    payment_period_years INTEGER NOT NULL,          -- 支払い年数
+    tax_deduction_enabled BOOLEAN NOT NULL,         -- 税制適格特約の有無
+
+    -- 見積もり計算結果
+    contract_date DATE NOT NULL,                    -- 契約開始日
+    contract_interest_rate FLOAT NOT NULL,          -- 契約利率
+    total_paid_amount INTEGER NOT NULL,             -- 支払総額
+    pension_start_age INTEGER NOT NULL,             -- 年金開始年齢
+    annual_tax_deduction INTEGER NOT NULL,          -- 年間控除額
+
+    -- シナリオ（jsonb配列）
+    scenario_data JSONB NOT NULL,                   -- 複数の利率シナリオデータ
+
+    -- ステータス
+    quote_state VARCHAR(32) DEFAULT 'none',         -- 見積もり状態（none, applied など）
+
+    -- レコード作成日
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP  -- 作成日時
 );
 ```
 
+* 申し込み情報を格納するテーブル
+
 ```sql
--- 保険申込データを管理するテーブル
+DROP TABLE IF EXISTS applications;
+
 CREATE TABLE applications (
-    application_id VARCHAR(64) PRIMARY KEY,
-    quote_id VARCHAR(64) NOT NULL REFERENCES quotes(quote_id),
-    user_id VARCHAR(64) NOT NULL,
-    application_status VARCHAR(32) NOT NULL CHECK (application_status IN ('pending', 'submitted', 'deleted')),
-    user_consent BOOLEAN NOT NULL DEFAULT FALSE,
-    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP
+    application_id UUID PRIMARY KEY,                   -- 申込ID（UUID形式で一意に識別）
+
+    quote_id UUID NOT NULL,                            -- 対象となる見積もりID（quotes.quote_idを参照）
+    user_id UUID NOT NULL,                             -- 申込ユーザーID（Keycloakのsubと対応）
+
+    -- ステータス管理
+    application_status VARCHAR(32) DEFAULT 'none',     -- 申込状態（none, applied, cancelled, etc）
+
+    -- ユーザー同意とタイムスタンプ
+    user_consent BOOLEAN NOT NULL,                     -- 利用規約や約款への同意取得フラグ
+    applied_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,   -- 申込日時
+    deleted_at TIMESTAMP WITHOUT TIME ZONE             -- 削除日時（キャンセル・取り消し時など、NULL許容）
 );
 ```
 
@@ -148,59 +174,49 @@ CREATE TABLE contracts (
 
 ### 🟩 MongoDB用 スキーマ定義例（JSON風）
 
-#### `plans` コレクション（保険商品プラン）
+**保険商品情報**
+```javascript
+use insurance;
 
-```json
-{
-  "plan_id": "pension001",
-  "name": "個人年金保険",
-  "description": "老後の生活資金を確保するための保険です。",
-  "image_key": "pension001.jpg",
-  "rates_by_period": [
-    { "start_date": "2025-01-01", "end_date": "2025-12-31", "interest_rate": 1.5 },
-    { "start_date": "2026-01-01", "interest_rate": 1.3 }
-  ]
-}
+db.plans.insertMany([
+   {
+     plan_id: "pension001",
+     name: "個人年金保険",
+     description: "老後の生活資金を確保するための保険です。",
+     image_key: "pension001.jpg"
+   },
+   {
+     plan_id: "education001",
+     name: "学資保険",
+     description: "お子様の教育資金を準備するための保険です。",
+     image_key: "education001.jpg"
+   }
+]);
 ```
 
----
+**金利データ**
 
-#### `notifications` コレクション（お知らせ）
+```javascript
+use rate_db;
 
-```json
-{
-  "message_id": "notif001",
-  "title": "重要なお知らせ",
-  "content": "保険料が改定されます。",
-  "published_at": "2025-06-01T00:00:00Z",
-  "expires_at": "2025-12-31T00:00:00Z"
-}
-```
-
----
-
-#### `user_notifications_status` コレクション（既読管理）
-
-```json
-{
-  "user_id": "user_abc123",
-  "read_message_ids": ["notif001", "notif002"]
-}
-```
-
----
-
-#### `user_settings` コレクション（ユーザー設定）
-
-```json
-{
-  "user_id": "user_abc123",
-  "settings": {
-    "email_subscription": true,
-    "notification_sound": false,
-    "dark_mode": true
+db.interest_rates.insertMany([
+  {
+    "product_type": "pension",
+    "rate_type": "contract",
+    "rate": 1.2,
+    "start_date": ISODate("2025-01-01"),
+    "end_date": ISODate("2030-12-31"),
+    "guaranteed_minimum_rate": 0.5
+  },
+  {
+    "product_type": "pension",
+    "rate_type": "contract",
+    "rate": 1.3,
+    "start_date": ISODate("2031-01-01"),
+    "end_date": ISODate("2045-12-31"),
+    "guaranteed_minimum_rate": 0.5
   }
-}
+]);
 ```
 
 ---

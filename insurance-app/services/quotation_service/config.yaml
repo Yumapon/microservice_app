@@ -1,0 +1,15 @@
+postgres:
+  dsn: "postgresql://appuser:password@localhost:5432/insurance_db"
+
+mongodb:
+  dsn: "mongodb://localhost:27017/rate_db"
+  database: "rate_db"
+  collection: "interest_rates"
+
+keycloak:
+  keycloak_base_url: "http://localhost:8080/realms/internet-service-relm"
+  client_id: "insurance-app"
+
+session:
+  normal_ttl: 1800
+  rememberme_ttl: 2592000

@@ -1,0 +1,41 @@
+# Pythonキャッシュ・仮想環境
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pkl
+*.sqlite3
+.venv/
+venv/
+env/
+ENV/
+
+# OS / エディタ関連
+.DS_Store
+Thumbs.db
+
+# Git / バージョン管理
+.git
+.gitignore
+
+# IDE関連
+.vscode/
+.idea/
+
+# 単体テストや一時ファイル
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Docker / コンテナ関連
+Dockerfile*
+docker-compose*
+*.env
+
+# Pythonビルドアーティファクト
+build/
+dist/
+*.egg-info/

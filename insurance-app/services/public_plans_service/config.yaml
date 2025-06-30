@@ -1,0 +1,4 @@
+mongodb:
+  dsn: "mongodb://localhost:27017/insurance"
+  database: "insurance"
+  collection: "plans"

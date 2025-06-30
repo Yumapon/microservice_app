@@ -21,135 +21,6 @@ tags:
 - name: Settings
   description: ユーザー設定API
 
-components:
-  securitySchemes:
-    openIdConnect:
-      type: openIdConnect
-      openIdConnectUrl: https://your-keycloak-domain/auth/realms/your-realm/.well-known/openid-configuration
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-  schemas:
-    ErrorResponse:
-      type: object
-      properties:
-        detail:
-          type: string
-    RegisterRequest:
-      type: object
-      properties:
-        email:
-          type: string
-          format: email
-          example: user@example.com
-        password:
-          type: string
-          format: password
-          example: P@ssw0rd!
-        full_name:
-          type: string
-          example: 山田 太郎
-      required:
-      - email
-      - password
-      - full_name
-    QuoteRequest:
-      type: object
-      properties:
-        plan_id:
-          type: string
-          example: pension001
-        payment_period:
-          type: integer
-          example: 20
-        monthly_premium:
-          type: integer
-          example: 20000
-        refund_condition:
-          type: string
-          example: 満期一括受取
-      required:
-      - plan_id
-      - payment_period
-      - monthly_premium
-      - refund_condition
-    QuoteResponse:
-      type: object
-      properties:
-        quote_id:
-          type: string
-          example: quote_abc123
-        plan_id:
-          type: string
-          example: pension001
-        monthly_premium:
-          type: integer
-          example: 20000
-        expected_refund:
-          type: integer
-          example: 3100000
-        valid_until:
-          type: string
-          format: date-time
-          example: '2025-07-01T00:00:00Z'
-    ApplicationRequest:
-      type: object
-      properties:
-        quote_id:
-          type: string
-          example: quote_abc123
-        user_consent:
-          type: boolean
-          example: true
-      required:
-      - quote_id
-      - user_consent
-    ApplicationResponse:
-      type: object
-      properties:
-        application_id:
-          type: string
-          example: app_xyz789
-        status:
-          type: string
-          example: submitted
-    Plan:
-      type: object
-      properties:
-        plan_id:
-          type: string
-          example: pension001
-        name:
-          type: string
-          example: 個人年金保険
-        description:
-          type: string
-          example: 老後の生活資金を確保するための保険です。
-        image_key:
-          type: string
-          example: pension001.jpg
-    Notification:
-      type: object
-      properties:
-        message_id:
-          type: string
-          example: notif001
-        title:
-          type: string
-          example: 重要なお知らせ
-        content:
-          type: string
-          example: 保険料が改定されます。
-        published_at:
-          type: string
-          format: date-time
-          example: '2025-06-01T00:00:00Z'
-        is_read:
-          type: boolean
-          example: false
-security:
-- bearerAuth: []
 paths:
   /auth/register:
     post:
@@ -253,21 +124,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
   /api/v1/public/plans:
     get:
       tags:
-      - PublicPlans
-      summary: 公開保険商品一覧取得
-      description: ログイン不要で取得可能な保険商品一覧APIです。
+        - PublicPlans
+      summary: 保険商品一覧を取得
+      description: 認証不要で取得できる保険商品の一覧を返します。
+      operationId: getPublicPlans
       responses:
         '200':
-          description: 成功
+          description: 保険商品一覧の取得に成功
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/Plan'
+        '500':
+          description: サーバーエラー
+
   /api/v1/quotes/{product_type}:
     post:
       tags:
@@ -537,3 +413,142 @@ paths:
           description: 不正なリクエスト
         '401':
           description: 認証エラー
+
+components:
+  securitySchemes:
+    openIdConnect:
+      type: openIdConnect
+      openIdConnectUrl: https://your-keycloak-domain/auth/realms/your-realm/.well-known/openid-configuration
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          example: P@ssw0rd!
+        full_name:
+          type: string
+          example: 山田 太郎
+      required:
+      - email
+      - password
+      - full_name
+    QuoteRequest:
+      type: object
+      properties:
+        plan_id:
+          type: string
+          example: pension001
+        payment_period:
+          type: integer
+          example: 20
+        monthly_premium:
+          type: integer
+          example: 20000
+        refund_condition:
+          type: string
+          example: 満期一括受取
+      required:
+      - plan_id
+      - payment_period
+      - monthly_premium
+      - refund_condition
+    QuoteResponse:
+      type: object
+      properties:
+        quote_id:
+          type: string
+          example: quote_abc123
+        plan_id:
+          type: string
+          example: pension001
+        monthly_premium:
+          type: integer
+          example: 20000
+        expected_refund:
+          type: integer
+          example: 3100000
+        valid_until:
+          type: string
+          format: date-time
+          example: '2025-07-01T00:00:00Z'
+    ApplicationRequest:
+      type: object
+      properties:
+        quote_id:
+          type: string
+          example: quote_abc123
+        user_consent:
+          type: boolean
+          example: true
+      required:
+      - quote_id
+      - user_consent
+    ApplicationResponse:
+      type: object
+      properties:
+        application_id:
+          type: string
+          example: app_xyz789
+        status:
+          type: string
+          example: submitted
+    Plan:
+      type: object
+      properties:
+        plan_id:
+          type: string
+          example: "pension001"
+          description: 保険商品ID
+        name:
+          type: string
+          example: "個人年金保"
+          description: 保険商品名
+        description:
+          type: string
+          example: "老後の生活資金を確保するための保険です。"
+          description: 商品の説明
+        image_key:
+          type: string
+          example: "pension001.jpg"
+          description: S3上の画像キー
+      required:
+        - plan_id
+        - name
+        - description
+        - image_key
+    Notification:
+      type: object
+      properties:
+        message_id:
+          type: string
+          example: notif001
+        title:
+          type: string
+          example: 重要なお知らせ
+        content:
+          type: string
+          example: 保険料が改定されます。
+        published_at:
+          type: string
+          format: date-time
+          example: '2025-06-01T00:00:00Z'
+        is_read:
+          type: boolean
+          example: false
+security:
+- bearerAuth: []
