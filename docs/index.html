@@ -4,13 +4,10 @@
     <meta charset="UTF-8" />
     <title>保険アプリ API ドキュメント</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-    <!-- Swagger UI & Icons -->
     <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css" />
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
 
-    <!-- Custom Styling -->
     <style>
       :root {
         --primary-color: #0077cc;
@@ -83,40 +80,53 @@
         color: #eee;
       }
 
-      body.dark-mode select,
-      body.dark-mode input,
-      body.dark-mode textarea,
-      body.dark-mode .opblock-description-wrapper,
-      body.dark-mode .model-title,
-      body.dark-mode .markdown,
-      body.dark-mode .server-url,
-      body.dark-mode .parameters-col_description {
-        background-color: #222 !important;
+      /* Swagger UI dark overrides */
+      body.dark-mode .information-container,
+      body.dark-mode .scheme-container,
+      body.dark-mode .servers,
+      body.dark-mode .authorization__btn {
+        background-color: #1e1e1e !important;
+        color: #f8f8f8 !important;
+        border-color: #555 !important;
+      }
+
+      body.dark-mode .authorization__btn {
+        background: transparent !important;
+        border: 1px solid #999 !important;
         color: #f8f8f8 !important;
       }
 
-      body.dark-mode .opblock {
-        background-color: #1a1a1a !important;
+      body.dark-mode select,
+      body.dark-mode input,
+      body.dark-mode textarea {
+        background-color: #2a2a2a !important;
+        color: #f8f8f8 !important;
+        border: 1px solid #444 !important;
       }
 
-      body.dark-mode .opblock-summary-method {
-        color: #fff !important;
-      }
-
-      body.dark-mode .opblock-tag {
-        background-color: #292929 !important;
+      body.dark-mode .markdown,
+      body.dark-mode .model-title,
+      body.dark-mode .parameter__name,
+      body.dark-mode .response-col_status,
+      body.dark-mode .opblock-description-wrapper,
+      body.dark-mode .opblock-tag-section,
+      body.dark-mode .tag {
         color: #f0f0f0 !important;
       }
 
-      body.dark-mode pre {
-        background-color: #111 !important;
-        color: #eee !important;
+      body.dark-mode .opblock-summary {
+        background-color: #1b1b1b !important;
       }
 
-      body.dark-mode table.model tr td,
-      body.dark-mode table.model tr th {
-        background-color: #1a1a1a !important;
-        color: #eee !important;
+      body.dark-mode .opblock {
+        background-color: #202020 !important;
+        border-color: #333 !important;
+      }
+
+      body.dark-mode .model-box,
+      body.dark-mode .response-col_description__inner {
+        background-color: #262626 !important;
+        color: #ddd !important;
       }
 
       @media (max-width: 768px) {
