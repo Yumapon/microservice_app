@@ -10,141 +10,88 @@
 
     <style>
       :root {
-        --primary-color: #0077cc;
-        --dark-bg: #121212;
-        --dark-fg: #f8f8f8;
-        --light-bg: #ffffff;
-        --light-fg: #222;
+        --primary: #0077cc;
+        --accent: #f4f7fb;
+        --header-height: 60px;
       }
 
       body {
         margin: 0;
         font-family: "Noto Sans JP", sans-serif;
-        background-color: var(--light-bg);
-        color: var(--light-fg);
-        transition: background-color 0.3s, color 0.3s;
+        background-color: #fff;
+        color: #222;
       }
 
       header {
-        background-color: var(--primary-color);
-        color: white;
+        background-color: var(--primary);
+        color: #fff;
         padding: 1rem 2rem;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+        height: var(--header-height);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
       }
 
       header .title {
-        font-size: 1.3rem;
-        font-weight: bold;
-      }
-
-      .theme-toggle {
         font-size: 1.4rem;
-        cursor: pointer;
-        transition: color 0.2s;
-      }
-
-      .theme-toggle:hover {
-        color: #ddd;
+        font-weight: 700;
       }
 
       .loading {
         text-align: center;
-        font-size: 1.2rem;
+        font-size: 1.1rem;
         padding: 2rem;
-        color: #666;
+        color: #777;
       }
 
       #swagger-ui {
         margin-top: 20px;
       }
 
-      /* --- ダークモード --- */
-      body.dark-mode {
-        background-color: var(--dark-bg);
-        color: var(--dark-fg);
+      /* Swagger UI overrides */
+      .swagger-ui .topbar {
+        display: none;
       }
 
-      body.dark-mode header {
-        background-color: #1e1e1e;
-        color: white;
+      .swagger-ui .scheme-container {
+        background-color: var(--accent);
+        padding: 1rem;
+        border-radius: 5px;
+        margin-bottom: 20px;
       }
 
-      body.dark-mode .loading {
-        color: #aaa;
+      .swagger-ui .info {
+        margin: 2rem 0 1rem 0;
       }
 
-      body.dark-mode .theme-toggle:hover {
-        color: #eee;
+      .swagger-ui .info hgroup.main {
+        margin-bottom: 0.5rem;
       }
 
-      /* Swagger UI dark overrides */
-      body.dark-mode .information-container,
-      body.dark-mode .scheme-container,
-      body.dark-mode .servers,
-      body.dark-mode .authorization__btn {
-        background-color: #1e1e1e !important;
-        color: #f8f8f8 !important;
-        border-color: #555 !important;
-      }
-
-      body.dark-mode .authorization__btn {
-        background: transparent !important;
-        border: 1px solid #999 !important;
-        color: #f8f8f8 !important;
-      }
-
-      body.dark-mode select,
-      body.dark-mode input,
-      body.dark-mode textarea {
-        background-color: #2a2a2a !important;
-        color: #f8f8f8 !important;
-        border: 1px solid #444 !important;
-      }
-
-      body.dark-mode .markdown,
-      body.dark-mode .model-title,
-      body.dark-mode .parameter__name,
-      body.dark-mode .response-col_status,
-      body.dark-mode .opblock-description-wrapper,
-      body.dark-mode .opblock-tag-section,
-      body.dark-mode .tag {
-        color: #f0f0f0 !important;
-      }
-
-      body.dark-mode .opblock-summary {
-        background-color: #1b1b1b !important;
-      }
-
-      body.dark-mode .opblock {
-        background-color: #202020 !important;
-        border-color: #333 !important;
-      }
-
-      body.dark-mode .model-box,
-      body.dark-mode .response-col_description__inner {
-        background-color: #262626 !important;
-        color: #ddd !important;
+      .swagger-ui .info .title small {
+        background: #efefef;
+        color: #333;
+        padding: 2px 8px;
+        border-radius: 4px;
+        margin-left: 10px;
+        font-size: 0.8rem;
       }
 
       @media (max-width: 768px) {
         header {
           flex-direction: column;
-          align-items: flex-start;
-          gap: 0.5rem;
+          height: auto;
+          padding: 1rem;
         }
       }
     </style>
   </head>
+
   <body>
     <header>
       <div class="title">
         <i class="fa-solid fa-shield-halved"></i> 保険アプリ API ドキュメント
-      </div>
-      <div class="theme-toggle" onclick="toggleTheme()">
-        <i class="fa-solid fa-moon" id="theme-icon"></i>
       </div>
     </header>
 
@@ -153,30 +100,18 @@
 
     <script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script>
     <script>
-      const ui = SwaggerUIBundle({
+      SwaggerUIBundle({
         url: "openapi.yaml",
         dom_id: "#swagger-ui",
         deepLinking: true,
         presets: [SwaggerUIBundle.presets.apis],
         layout: "BaseLayout",
         docExpansion: "none",
-        onComplete: () => {
+        onComplete: function () {
           document.getElementById("loading").style.display = "none";
           document.getElementById("swagger-ui").style.display = "block";
         }
       });
-
-      function toggleTheme() {
-        document.body.classList.toggle("dark-mode");
-        const icon = document.getElementById("theme-icon");
-        if (document.body.classList.contains("dark-mode")) {
-          icon.classList.remove("fa-moon");
-          icon.classList.add("fa-sun");
-        } else {
-          icon.classList.remove("fa-sun");
-          icon.classList.add("fa-moon");
-        }
-      }
     </script>
   </body>
 </html>
