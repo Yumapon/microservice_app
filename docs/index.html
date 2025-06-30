@@ -5,93 +5,125 @@
     <title>保険アプリ API ドキュメント</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- Swagger UI CSS -->
+    <!-- Swagger UI & Icons -->
     <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css" />
-
-    <!-- Google Fonts & Font Awesome -->
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet" />
 
-    <!-- Custom Styles -->
+    <!-- Custom Styling -->
     <style>
       :root {
         --primary-color: #0077cc;
-        --header-height: 60px;
-        --bg-light: #f9f9f9;
-        --bg-dark: #1e1e1e;
-        --text-light: #f0f0f0;
-        --text-dark: #222;
+        --dark-bg: #121212;
+        --dark-fg: #f8f8f8;
+        --light-bg: #ffffff;
+        --light-fg: #222;
       }
 
       body {
         margin: 0;
         font-family: "Noto Sans JP", sans-serif;
-        background-color: var(--bg-light);
-        color: var(--text-dark);
-        transition: background 0.3s, color 0.3s;
+        background-color: var(--light-bg);
+        color: var(--light-fg);
+        transition: background-color 0.3s, color 0.3s;
       }
 
       header {
-        height: var(--header-height);
         background-color: var(--primary-color);
         color: white;
-        padding: 0 2rem;
+        padding: 1rem 2rem;
         display: flex;
         align-items: center;
         justify-content: space-between;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-        font-weight: bold;
-        font-size: 1.2rem;
       }
 
-      header .title i {
-        margin-right: 10px;
+      header .title {
+        font-size: 1.3rem;
+        font-weight: bold;
       }
 
       .theme-toggle {
+        font-size: 1.4rem;
         cursor: pointer;
-        font-size: 1.3rem;
-        transition: color 0.3s;
+        transition: color 0.2s;
       }
 
       .theme-toggle:hover {
         color: #ddd;
       }
 
+      .loading {
+        text-align: center;
+        font-size: 1.2rem;
+        padding: 2rem;
+        color: #666;
+      }
+
       #swagger-ui {
         margin-top: 20px;
       }
 
-      .loading {
-        text-align: center;
-        padding: 2rem;
-        font-size: 1.2rem;
-        color: #777;
-      }
-
-      /* Dark mode styles */
+      /* --- ダークモード --- */
       body.dark-mode {
-        background-color: var(--bg-dark);
-        color: var(--text-light);
+        background-color: var(--dark-bg);
+        color: var(--dark-fg);
       }
 
       body.dark-mode header {
-        background-color: #111;
+        background-color: #1e1e1e;
+        color: white;
       }
 
       body.dark-mode .loading {
-        color: #ccc;
+        color: #aaa;
       }
 
       body.dark-mode .theme-toggle:hover {
-        color: #ccc;
+        color: #eee;
+      }
+
+      body.dark-mode select,
+      body.dark-mode input,
+      body.dark-mode textarea,
+      body.dark-mode .opblock-description-wrapper,
+      body.dark-mode .model-title,
+      body.dark-mode .markdown,
+      body.dark-mode .server-url,
+      body.dark-mode .parameters-col_description {
+        background-color: #222 !important;
+        color: #f8f8f8 !important;
+      }
+
+      body.dark-mode .opblock {
+        background-color: #1a1a1a !important;
+      }
+
+      body.dark-mode .opblock-summary-method {
+        color: #fff !important;
+      }
+
+      body.dark-mode .opblock-tag {
+        background-color: #292929 !important;
+        color: #f0f0f0 !important;
+      }
+
+      body.dark-mode pre {
+        background-color: #111 !important;
+        color: #eee !important;
+      }
+
+      body.dark-mode table.model tr td,
+      body.dark-mode table.model tr th {
+        background-color: #1a1a1a !important;
+        color: #eee !important;
       }
 
       @media (max-width: 768px) {
         header {
           flex-direction: column;
-          height: auto;
-          padding: 1rem;
+          align-items: flex-start;
+          gap: 0.5rem;
         }
       }
     </style>
@@ -109,11 +141,8 @@
     <div class="loading" id="loading">🚀 API仕様を読み込み中です...</div>
     <div id="swagger-ui" style="display: none;"></div>
 
-    <!-- Swagger UI Script -->
     <script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script>
-
     <script>
-      // Load Swagger UI
       const ui = SwaggerUIBundle({
         url: "openapi.yaml",
         dom_id: "#swagger-ui",
@@ -127,7 +156,6 @@
         }
       });
 
-      // ダークモード切り替え
       function toggleTheme() {
         document.body.classList.toggle("dark-mode");
         const icon = document.getElementById("theme-icon");
