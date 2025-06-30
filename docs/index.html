@@ -4,41 +4,58 @@
     <meta charset="UTF-8" />
     <title>保険アプリ API ドキュメント</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Swagger UI - 保険アプリのAPI仕様" />
 
     <!-- Swagger UI CSS -->
     <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css" />
 
-    <!-- Google Fonts & Icons -->
-    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,700&display=swap" rel="stylesheet" />
+    <!-- Google Fonts & Font Awesome -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
 
-    <!-- Custom Styling -->
+    <!-- Custom Styles -->
     <style>
+      :root {
+        --primary-color: #0077cc;
+        --header-height: 60px;
+        --bg-light: #f9f9f9;
+        --bg-dark: #1e1e1e;
+        --text-light: #f0f0f0;
+        --text-dark: #222;
+      }
+
       body {
         margin: 0;
-        font-family: "Roboto", sans-serif;
-        background-color: #f5f7fa;
+        font-family: "Noto Sans JP", sans-serif;
+        background-color: var(--bg-light);
+        color: var(--text-dark);
+        transition: background 0.3s, color 0.3s;
       }
 
       header {
-        background: #0077cc;
+        height: var(--header-height);
+        background-color: var(--primary-color);
         color: white;
-        padding: 1rem 2rem;
+        padding: 0 2rem;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+        font-weight: bold;
+        font-size: 1.2rem;
       }
 
-      header h1 {
-        margin: 0;
-        font-size: 1.6rem;
+      header .title i {
+        margin-right: 10px;
       }
 
       .theme-toggle {
         cursor: pointer;
-        font-size: 1.2rem;
+        font-size: 1.3rem;
+        transition: color 0.3s;
+      }
+
+      .theme-toggle:hover {
+        color: #ddd;
       }
 
       #swagger-ui {
@@ -49,41 +66,56 @@
         text-align: center;
         padding: 2rem;
         font-size: 1.2rem;
-        color: #555;
+        color: #777;
       }
 
-      .dark-mode {
-        background-color: #121212 !important;
-        color: #f0f0f0;
+      /* Dark mode styles */
+      body.dark-mode {
+        background-color: var(--bg-dark);
+        color: var(--text-light);
       }
 
-      .dark-mode header {
-        background-color: #1e1e1e;
+      body.dark-mode header {
+        background-color: #111;
       }
 
-      .dark-mode .loading {
+      body.dark-mode .loading {
         color: #ccc;
+      }
+
+      body.dark-mode .theme-toggle:hover {
+        color: #ccc;
+      }
+
+      @media (max-width: 768px) {
+        header {
+          flex-direction: column;
+          height: auto;
+          padding: 1rem;
+        }
       }
     </style>
   </head>
   <body>
     <header>
-      <h1><i class="fa-solid fa-file-lines"></i> 保険アプリ API ドキュメント</h1>
+      <div class="title">
+        <i class="fa-solid fa-shield-halved"></i> 保険アプリ API ドキュメント
+      </div>
       <div class="theme-toggle" onclick="toggleTheme()">
         <i class="fa-solid fa-moon" id="theme-icon"></i>
       </div>
     </header>
 
-    <div class="loading" id="loading">読み込み中... 少々お待ちください。</div>
-
+    <div class="loading" id="loading">🚀 API仕様を読み込み中です...</div>
     <div id="swagger-ui" style="display: none;"></div>
 
     <!-- Swagger UI Script -->
     <script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script>
 
     <script>
+      // Load Swagger UI
       const ui = SwaggerUIBundle({
-        url: "openapi.yaml", // 同階層のファイル名
+        url: "openapi.yaml",
         dom_id: "#swagger-ui",
         deepLinking: true,
         presets: [SwaggerUIBundle.presets.apis],
@@ -92,9 +124,10 @@
         onComplete: () => {
           document.getElementById("loading").style.display = "none";
           document.getElementById("swagger-ui").style.display = "block";
-        },
+        }
       });
 
+      // ダークモード切り替え
       function toggleTheme() {
         document.body.classList.toggle("dark-mode");
         const icon = document.getElementById("theme-icon");
