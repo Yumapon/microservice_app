@@ -8,9 +8,7 @@
     <!-- Swagger UI -->
     <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css" />
 
-    <!-- AsyncAPI Web Component -->
-    <script src="https://unpkg.com/@asyncapi/web-component@1.0.0-next.39/lib/standalone/index.js"></script>
-
+    <!-- スタイル -->
     <style>
       body {
         font-family: sans-serif;
@@ -27,7 +25,7 @@
         padding: 1rem;
       }
       #swagger-ui,
-      asyncapi-component {
+      #asyncapi {
         margin-top: 1rem;
         border-top: 1px solid #ccc;
         padding-top: 1rem;
@@ -44,10 +42,7 @@
 
     <div class="section">
       <h2>🔶 Event API (AsyncAPI)</h2>
-      <asyncapi-component
-        schema-url="asyncapi.yml"
-        css-import-path="https://unpkg.com/@asyncapi/react-component@1.0.0-next.39/styles/default.min.css"
-      ></asyncapi-component>
+      <div id="asyncapi"></div>
     </div>
 
     <!-- Swagger UI JS -->
@@ -56,6 +51,17 @@
       SwaggerUIBundle({
         url: "openapi.yaml",
         dom_id: "#swagger-ui"
+      });
+    </script>
+
+    <!-- AsyncAPI Web Component JS -->
+    <script src="https://unpkg.com/@asyncapi/web-component@1.0.0-next.39/lib/standalone/index.js"></script>
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        const asyncapi = document.createElement("asyncapi-component");
+        asyncapi.setAttribute("schema-url", "asyncapi.yml");
+        asyncapi.setAttribute("css-import-path", "https://unpkg.com/@asyncapi/react-component@1.0.0-next.39/styles/default.min.css");
+        document.getElementById("asyncapi").appendChild(asyncapi);
       });
     </script>
   </body>
