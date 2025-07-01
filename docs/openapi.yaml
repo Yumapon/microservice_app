@@ -15,6 +15,8 @@ tags:
   description: 保険見積もり関連API
 - name: Application
   description: 保険申込関連API
+- name: Contract
+  description: 保険契約関連API
 
 paths:
   /api/v1/public/plans:
@@ -416,6 +418,125 @@ paths:
         '404':
           description: 申込が存在しない
 
+  /api/v1/my/contracts:
+    get:
+      tags:
+        - Contract
+      summary: 契約一覧取得
+      description: 自分の保険契約一覧を取得します。
+      security:
+        - bearerAuth: []
+      operationId: getMyContracts
+      responses:
+        '200':
+          description: 契約一覧取得成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContractResponseModel'
+
+  /api/v1/my/contracts/{contract_id}:
+    get:
+      tags:
+        - Contract
+      summary: 契約詳細取得
+      description: 指定IDの保険契約情報を取得します。
+      security:
+        - bearerAuth: []
+      operationId: getMyContractById
+      parameters:
+        - name: contract_id
+          in: path
+          required: true
+          description: 契約ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 契約詳細取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractResponseModel'
+
+    put:
+      tags:
+        - Contract
+      summary: 契約情報の更新
+      description: 指定IDの保険契約を更新します。
+      security:
+        - bearerAuth: []
+      operationId: updateMyContract
+      parameters:
+        - name: contract_id
+          in: path
+          required: true
+          description: 更新対象の契約ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContractUpdateModel'
+      responses:
+        '200':
+          description: 契約更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractResponseModel'
+
+  /api/v1/my/contracts/{contract_id}/cancel:
+    put:
+      tags:
+        - Contract
+      summary: 契約キャンセル
+      description: 指定IDの契約をキャンセル（解約）します。
+      security:
+        - bearerAuth: []
+      operationId: cancelMyContract
+      parameters:
+        - name: contract_id
+          in: path
+          required: true
+          description: 解約対象の契約ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 契約キャンセル成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractResponseModel'
+
+  /api/v1/contracts/confirm:
+    post:
+      tags:
+        - Contract
+      summary: 契約確定
+      description: 申込に基づいて契約を明示的に確定・登録します。
+      security:
+        - bearerAuth: []
+      operationId: confirmContract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContractCreateRequestModel'
+      responses:
+        '200':
+          description: 契約作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractResponseModel'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -661,3 +782,155 @@ components:
           type: string
         status:
           type: string
+
+    ContractScenarioModel:
+      type: object
+      description: 利率シナリオごとの契約見積もり結果
+      properties:
+        scenario_name:
+          type: string
+          description: シナリオ名（高金利、標準、最低保証など）
+        assumed_interest_rate:
+          type: number
+          format: float
+          description: 想定される予定利率（%）
+        total_refund_amount:
+          type: integer
+          description: 累計返戻金額（最終受取額）
+        annual_annuity:
+          type: integer
+          description: 年金形式で受け取る場合の年間受取額
+        lump_sum_amount:
+          type: integer
+          description: 一括受取額
+        refund_on_15_years:
+          type: integer
+          description: 15年間払込んだ場合の返戻金額
+        refund_rate_on_15_years:
+          type: number
+          format: float
+          description: 15年間払込んだ場合の返戻率（%）
+
+    ContractCreateRequestModel:
+      type: object
+      required:
+        - application_id
+      properties:
+        application_id:
+          type: string
+          format: uuid
+          description: 契約作成対象の申込ID
+
+    ContractUpdateModel:
+      type: object
+      description: 契約更新用入力モデル（部分更新可能）
+      properties:
+        monthly_premium:
+          type: integer
+          description: 月額保険料（円）
+        payment_period_years:
+          type: integer
+          description: 払込期間（年数）
+        tax_deduction_enabled:
+          type: boolean
+          description: 税制適格特約の有無
+        contract_date:
+          type: string
+          format: date
+          description: 契約開始日
+        contract_interest_rate:
+          type: number
+          format: float
+          description: 契約時利率（%）
+        total_paid_amount:
+          type: integer
+          description: 総払込額（円）
+        pension_start_age:
+          type: integer
+          description: 年金受給開始年齢
+        annual_tax_deduction:
+          type: integer
+          description: 年間税控除額（円）
+        scenarios:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContractScenarioModel'
+
+    ContractResponseModel:
+      type: object
+      description: 保険契約情報の出力モデル
+      properties:
+        contract_id:
+          type: string
+          format: uuid
+          description: 契約ID
+        user_id:
+          type: string
+          format: uuid
+          description: ユーザーID
+        application_id:
+          type: string
+          format: uuid
+          description: 紐づく申込ID
+        quote_id:
+          type: string
+          format: uuid
+          description: 紐づく見積もりID
+        contract_status:
+          type: string
+          enum: [active, cancelled]
+          description: 契約の状態
+        user_consent:
+          type: boolean
+          description: ユーザー同意フラグ
+        applied_at:
+          type: string
+          format: date-time
+          description: 契約確定日時
+        birth_date:
+          type: string
+          format: date
+          description: 生年月日
+        gender:
+          type: string
+          enum: ["男", "女"]
+          description: 性別（男／女）
+        monthly_premium:
+          type: integer
+          description: 月額保険料
+        payment_period_years:
+          type: integer
+          description: 払込年数
+        tax_deduction_enabled:
+          type: boolean
+          description: 税制適格特約の有無
+        contract_date:
+          type: string
+          format: date
+          description: 契約開始日
+        contract_interest_rate:
+          type: number
+          format: float
+          description: 契約時利率
+        total_paid_amount:
+          type: integer
+          description: 総払込額
+        pension_start_age:
+          type: integer
+          description: 年金受給開始年齢
+        annual_tax_deduction:
+          type: integer
+          description: 年間税控除額
+        scenarios:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContractScenarioModel'
+        created_at:
+          type: string
+          format: date-time
+          description: レコード作成日時
+        cancelled_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: キャンセル日時（キャンセルされていない場合はnull）
