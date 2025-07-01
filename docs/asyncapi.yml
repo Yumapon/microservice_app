@@ -1,5 +1,4 @@
-asyncapi: '2.6.0'
-id: 'urn:com:insurance:application-events'
+asyncapi: '3.0.0'
 info:
   title: 保険アプリ - 保険申込イベント仕様
   version: '1.0.0'
@@ -7,62 +6,40 @@ info:
     本仕様は、application_service から quotation_service に送信される
     保険申込関連の非同期イベント（ApplicationConfirmed / ApplicationCancelled）を定義する。
     NATSメッセージングを用いたイベント駆動型通信に対応。
-  contact:
-    name: 保険アプリ開発チーム
-    email: support@example.com
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
 
 defaultContentType: application/json
 
 servers:
   production:
-    url: nats://localhost:4222
+    host: localhost:4222
     protocol: nats
     description: 開発環境用NATSサーバ（変更可能）
 
 channels:
   applications.ApplicationConfirmed:
-    description: 保険申込確定イベントをやり取りするトピック
-    subscribe:
-      summary: quotation_service による ApplicationConfirmed イベントの受信
-      operationId: onApplicationConfirmed
-      message:
-        $ref: '#/components/messages/ApplicationConfirmedMessage'
-    publish:
-      summary: application_service による ApplicationConfirmed イベントの送信
-      operationId: sendApplicationConfirmed
-      message:
-        $ref: '#/components/messages/ApplicationConfirmedMessage'
+    address: applications.ApplicationConfirmed
+    messages:
+      ApplicationConfirmedMessage:
+        $ref: '#/components/messages/ApplicationConfirmed'
 
   applications.ApplicationCancelled:
-    description: 保険申込キャンセルイベントをやり取りするトピック
-    subscribe:
-      summary: quotation_service による ApplicationCancelled イベントの受信
-      operationId: onApplicationCancelled
-      message:
-        $ref: '#/components/messages/ApplicationCancelledMessage'
-    publish:
-      summary: application_service による ApplicationCancelled イベントの送信
-      operationId: sendApplicationCancelled
-      message:
-        $ref: '#/components/messages/ApplicationCancelledMessage'
+    address: applications.ApplicationCancelled
+    messages:
+      ApplicationCancelledMessage:
+        $ref: '#/components/messages/ApplicationCancelled'
 
 components:
   messages:
-    ApplicationConfirmedMessage:
+    ApplicationConfirmed:
       name: ApplicationConfirmed
-      messageId: application_confirmed_event
       title: 保険申込確定イベント
       summary: 見積もりに対する申込が確定したことを通知するイベント
       contentType: application/json
       payload:
         $ref: '#/components/schemas/ApplicationConfirmedEvent'
 
-    ApplicationCancelledMessage:
+    ApplicationCancelled:
       name: ApplicationCancelled
-      messageId: application_cancelled_event
       title: 保険申込キャンセルイベント
       summary: 見積もりに対する申込がキャンセルされたことを通知するイベント
       contentType: application/json
@@ -81,8 +58,8 @@ components:
       properties:
         event:
           type: string
-          enum: [ApplicationConfirmed]
-          description: イベント種別（固定値: "ApplicationConfirmed"）
+          const: ApplicationConfirmed
+          description: イベント種別（固定値 "ApplicationConfirmed"）
         quote_id:
           type: string
           format: uuid
@@ -111,8 +88,8 @@ components:
       properties:
         event:
           type: string
-          enum: [ApplicationCancelled]
-          description: イベント種別（固定値: "ApplicationCancelled"）
+          const: ApplicationCancelled
+          description: イベント種別（固定値 "ApplicationCancelled"）
         quote_id:
           type: string
           format: uuid
