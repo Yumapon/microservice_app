@@ -1,4 +1,4 @@
-asyncapi: '2.6.0'
+asyncapi: '3.0.0'
 info:
   title: 保険アプリ - 保険申込イベント仕様
   version: '1.0.0'
@@ -11,35 +11,21 @@ defaultContentType: application/json
 
 servers:
   production:
-    url: nats://localhost:4222
+    host: localhost:4222
     protocol: nats
     description: 開発環境用NATSサーバ（変更可能）
 
 channels:
   applications.ApplicationConfirmed:
-    description: 保険申込確定イベントをやり取りするトピック
-    subscribe:
-      summary: quotation_service による ApplicationConfirmed イベントの受信
-      operationId: onApplicationConfirmed
-      message:
-        $ref: '#/components/messages/ApplicationConfirmed'
-    publish:
-      summary: application_service による ApplicationConfirmed イベントの送信
-      operationId: sendApplicationConfirmed
-      message:
+    address: applications.ApplicationConfirmed
+    messages:
+      ApplicationConfirmedMessage:
         $ref: '#/components/messages/ApplicationConfirmed'
 
   applications.ApplicationCancelled:
-    description: 保険申込キャンセルイベントをやり取りするトピック
-    subscribe:
-      summary: quotation_service による ApplicationCancelled イベントの受信
-      operationId: onApplicationCancelled
-      message:
-        $ref: '#/components/messages/ApplicationCancelled'
-    publish:
-      summary: application_service による ApplicationCancelled イベントの送信
-      operationId: sendApplicationCancelled
-      message:
+    address: applications.ApplicationCancelled
+    messages:
+      ApplicationCancelledMessage:
         $ref: '#/components/messages/ApplicationCancelled'
 
 components:
@@ -73,7 +59,7 @@ components:
         event:
           type: string
           const: ApplicationConfirmed
-          description: イベント種別（固定値: "ApplicationConfirmed"）
+          description: イベント種別（固定値 "ApplicationConfirmed"）
         quote_id:
           type: string
           format: uuid
@@ -103,7 +89,7 @@ components:
         event:
           type: string
           const: ApplicationCancelled
-          description: イベント種別（固定値: "ApplicationCancelled"）
+          description: イベント種別（固定値 "ApplicationCancelled"）
         quote_id:
           type: string
           format: uuid
