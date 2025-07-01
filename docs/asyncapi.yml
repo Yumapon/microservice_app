@@ -1,4 +1,4 @@
-asyncapi: '3.0.0'
+asyncapi: '2.6.0'
 info:
   title: 保険アプリ - 保険申込イベント仕様
   version: '1.0.0'
