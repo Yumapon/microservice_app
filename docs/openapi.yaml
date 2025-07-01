@@ -1,4 +1,4 @@
-openapi: 3.1.0
+openapi: 3.0.1
 info:
   title: 保険アプリ API
   description: このAPIは保険アプリにおけるユーザー認証、見積もり、申込、契約確認などの機能を提供します。
@@ -565,26 +565,6 @@ components:
       required:
         - new_state
 
-    ApplicationResponseModel:
-      type: object
-      properties:
-        application_id:
-          type: string
-          description: 発行された申込ID（UUID形式）
-          example: "b7d9c8f0-5c8d-4c82-9364-b1d2c8362ea5"
-        quote_id:
-          type: string
-          description: 申込元となった見積もりID
-          example: "0d853368-4bdf-49cf-bfcd-b1fc313dabdc"
-        status:
-          type: string
-          description: 申込ステータス（例：applied）
-          example: "applied"
-      required:
-        - application_id
-        - quote_id
-        - status
-
     ApplicationRequestModel:
       type: object
       properties:
@@ -672,28 +652,12 @@ components:
         - snapshot_annual_tax_deduction
         - scenario_data
 
-    PensionQuoteScenarioModel:
+    ApplicationStatusResponseModel:
       type: object
       properties:
-        scenario_name:
+        application_id:
           type: string
-        assumed_interest_rate:
-          type: number
-        total_refund_amount:
-          type: integer
-        annual_annuity:
-          type: integer
-        lump_sum_amount:
-          type: integer
-        refund_on_15_years:
-          type: integer
-        refund_rate_on_15_years:
-          type: number
-      required:
-        - scenario_name
-        - assumed_interest_rate
-        - total_refund_amount
-        - annual_annuity
-        - lump_sum_amount
-        - refund_on_15_years
-        - refund_rate_on_15_years
+        quote_id:
+          type: string
+        status:
+          type: string
