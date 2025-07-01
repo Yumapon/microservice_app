@@ -8,3 +8,4 @@ motor==3.7.1
 python-jose
 python-jose[cryptography]==3.3.0
 cryptography==42.0.5
+nats-py

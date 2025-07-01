@@ -1,0 +1,122 @@
+asyncapi: '2.6.0'
+info:
+  title: 保険アプリ - 保険申込イベント仕様
+  version: '1.0.0'
+  description: |
+    本仕様は、application_service から quotation_service に送信される
+    保険申込関連の非同期イベント（ApplicationConfirmed / ApplicationCancelled）を定義する。
+    NATSメッセージングを用いたイベント駆動型通信に対応。
+
+defaultContentType: application/json
+
+servers:
+  production:
+    url: nats://localhost:4222
+    protocol: nats
+    description: 開発環境用NATSサーバ（変更可能）
+
+channels:
+  applications.ApplicationConfirmed:
+    description: 保険申込確定イベントをやり取りするトピック
+    subscribe:
+      summary: quotation_service による ApplicationConfirmed イベントの受信
+      operationId: onApplicationConfirmed
+      message:
+        $ref: '#/components/messages/ApplicationConfirmed'
+    publish:
+      summary: application_service による ApplicationConfirmed イベントの送信
+      operationId: sendApplicationConfirmed
+      message:
+        $ref: '#/components/messages/ApplicationConfirmed'
+
+  applications.ApplicationCancelled:
+    description: 保険申込キャンセルイベントをやり取りするトピック
+    subscribe:
+      summary: quotation_service による ApplicationCancelled イベントの受信
+      operationId: onApplicationCancelled
+      message:
+        $ref: '#/components/messages/ApplicationCancelled'
+    publish:
+      summary: application_service による ApplicationCancelled イベントの送信
+      operationId: sendApplicationCancelled
+      message:
+        $ref: '#/components/messages/ApplicationCancelled'
+
+components:
+  messages:
+    ApplicationConfirmed:
+      name: ApplicationConfirmed
+      title: 保険申込確定イベント
+      summary: 見積もりに対する申込が確定したことを通知するイベント
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ApplicationConfirmedEvent'
+
+    ApplicationCancelled:
+      name: ApplicationCancelled
+      title: 保険申込キャンセルイベント
+      summary: 見積もりに対する申込がキャンセルされたことを通知するイベント
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ApplicationCancelledEvent'
+
+  schemas:
+    ApplicationConfirmedEvent:
+      type: object
+      required:
+        - event
+        - quote_id
+        - user_id
+        - application_id
+        - confirmed_at
+      properties:
+        event:
+          type: string
+          const: ApplicationConfirmed
+          description: イベント種別（固定値: "ApplicationConfirmed"）
+        quote_id:
+          type: string
+          format: uuid
+          description: 対象の見積もりID
+        user_id:
+          type: string
+          format: uuid
+          description: 申込者のユーザーID
+        application_id:
+          type: string
+          format: uuid
+          description: 確定済みの申込ID
+        confirmed_at:
+          type: string
+          format: date-time
+          description: 申込が確定された日時（ISO 8601形式）
+
+    ApplicationCancelledEvent:
+      type: object
+      required:
+        - event
+        - quote_id
+        - user_id
+        - application_id
+        - cancelled_at
+      properties:
+        event:
+          type: string
+          const: ApplicationCancelled
+          description: イベント種別（固定値: "ApplicationCancelled"）
+        quote_id:
+          type: string
+          format: uuid
+          description: 対象の見積もりID
+        user_id:
+          type: string
+          format: uuid
+          description: 申込者のユーザーID
+        application_id:
+          type: string
+          format: uuid
+          description: キャンセル対象の申込ID
+        cancelled_at:
+          type: string
+          format: date-time
+          description: 申込がキャンセルされた日時（ISO 8601形式）

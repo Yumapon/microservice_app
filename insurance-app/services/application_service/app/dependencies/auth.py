@@ -130,36 +130,71 @@ async def authenticate_user(token: str = Depends(oauth2_scheme)) -> Dict:
         )
 
 # ------------------------------------------------------------------------------
-# 認可: quote_writer権限を保持しているかの確認
+# 認可: application_writer権限を保持しているかの確認
 # ------------------------------------------------------------------------------
-def has_quote_write_permission(token: dict) -> bool:
+def has_application_write_permission(token: dict) -> bool:
     """
-    tokenに 'quote_writer' 権限が含まれているかを判定
+    tokenに 'application_writer' 権限が含まれているかを判定
     """
     try:
         roles = token.get("resource_access", {}) \
                      .get(CLIENT_ID, {}) \
                      .get("roles", [])
-        return "quote_writer" in roles
+        return "application_writer" in roles
     except Exception:
-        logger.exception("quote_writer権限チェック中に例外発生")
+        logger.exception("application_writer権限チェック中に例外発生")
+        return False
+    
+# ------------------------------------------------------------------------------
+# 認可: application_reader権限を保持しているかの確認
+# ------------------------------------------------------------------------------
+def has_application_read_permission(token: dict) -> bool:
+    """
+    tokenに 'application_reader' 権限が含まれているかを判定
+    """
+    try:
+        roles = token.get("resource_access", {}) \
+                     .get(CLIENT_ID, {}) \
+                     .get("roles", [])
+        return "application_reader" in roles
+    except Exception:
+        logger.exception("application_reader権限チェック中に例外発生")
         return False
 
 # ------------------------------------------------------------------------------
-# FastAPI依存関数: quote_writer権限を強制する
+# FastAPI依存関数: application_writer権限を強制する
 # ------------------------------------------------------------------------------
-async def require_quote_write_permission(
+async def require_application_write_permission(
     token: dict = Depends(authenticate_user)
 ) -> dict:
     """
-    quote_writer権限を持つユーザのみを許可する依存関数
+    application_writer権限を持つユーザのみを許可する依存関数
     """
-    if not has_quote_write_permission(token):
-        logger.warning("quote_writer権限なし: sub=%s", token.get("sub"))
+    if not has_application_write_permission(token):
+        logger.warning("application_writer権限なし: sub=%s", token.get("sub"))
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="quote_writer権限がありません"
+            detail="application_writer権限がありません"
         )
 
-    logger.info("quote_writer権限確認済み: sub=%s", token.get("sub"))
+    logger.info("application_writer権限確認済み: sub=%s", token.get("sub"))
+    return token
+
+# ------------------------------------------------------------------------------
+# FastAPI依存関数: application_reader権限を強制する
+# ------------------------------------------------------------------------------
+async def require_application_read_permission(
+    token: dict = Depends(authenticate_user)
+) -> dict:
+    """
+    application_reader権限を持つユーザのみを許可する依存関数
+    """
+    if not has_application_read_permission(token):
+        logger.warning("application_reader権限なし: sub=%s", token.get("sub"))
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="application_reader権限がありません"
+        )
+
+    logger.info("application_reader権限確認済み: sub=%s", token.get("sub"))
     return token

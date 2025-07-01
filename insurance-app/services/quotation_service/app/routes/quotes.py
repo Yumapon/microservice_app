@@ -4,7 +4,7 @@
 """
 
 import logging
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient
 from typing import List
 
@@ -12,13 +12,14 @@ from app.dependencies.auth import require_quote_write_permission
 from app.dependencies.get_mongo_client import get_mongo_client
 from app.models.quotes import (
     PensionQuoteRequestModel,
-    PensionQuoteResponseModel
+    PensionQuoteResponseModel,
+    QuoteStateUpdateModel
 )
 from app.services.calculate_quote import calculate_quote
 from app.services.quote_manager import (
     get_quotes_by_user_id,
     get_quote_by_id,
-    update_quote_state,
+    mark_quote_state,
     save_quote
 )
 
@@ -37,7 +38,6 @@ async def post_pension_quote(
     user_id_from_token = token_payload.get("sub")
     if not user_id_from_token:
         logger.warning("アクセストークンにsubが含まれていません")
-        from fastapi import HTTPException, status
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token: no user ID")
 
     logger.info(f"【API】/api/v1/quotes/pension 呼び出し (user_id={user_id_from_token})")
@@ -55,7 +55,6 @@ async def get_my_quotes(
     user_id_from_token = token_payload.get("sub")
     if not user_id_from_token:
         logger.warning("アクセストークンにsubが含まれていません")
-        from fastapi import HTTPException, status
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token: no user ID")
 
     logger.info(f"【API】/api/v1/my/quotes 呼び出し (user_id={user_id_from_token})")
@@ -74,7 +73,6 @@ async def get_my_quote_by_id(
     user_id_from_token = token_payload.get("sub")
     if not user_id_from_token:
         logger.warning("アクセストークンにsubが含まれていません")
-        from fastapi import HTTPException, status
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token: no user ID")
 
     quote = await get_quote_by_id(quote_id)
@@ -83,21 +81,25 @@ async def get_my_quote_by_id(
     logger.info(f"検索した見積もりを作成したユーザ (user_id={user_id_from_quote})")
     logger.info(f"トークンから取得したユーザID (user_id={user_id_from_token})")
     if user_id_from_quote != user_id_from_token:
-        from fastapi import HTTPException, status
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="他人の見積もりは参照できません")
 
     return quote
 
 # ------------------------------------------------------
-# PUT /my/quotes/{quote_id}
+# PUT /my/quotes/{quote_id}/changestate
 # ------------------------------------------------------
-@router.put("/my/quotes/{quote_id}", response_model=PensionQuoteResponseModel)
+@router.put("/my/quotes/{quote_id}/changestate", response_model=PensionQuoteResponseModel)
 async def update_my_quote_state(
+    update_model: QuoteStateUpdateModel,
     quote_id: str = Path(..., description="更新対象の見積もりID"),
-    token_payload: dict = Depends(require_quote_write_permission),
+    token_payload: dict = Depends(require_quote_write_permission)
 ):
-    logger.info(f"【API】/api/v1/my/quotes/{quote_id} 状態更新呼び出し")
+    logger.info(f"【API】/api/v1/my/quotes/{quote_id}/changestate 状態更新呼び出し")
 
-    # ステータスを「applied」に変更（固定でOKならこのまま）
-    updated_quote = await update_quote_state(quote_id, token_payload.get("sub"), new_state="applied")
+    user_id_from_token = token_payload.get("sub")
+    if not user_id_from_token:
+        logger.warning("アクセストークンにsubが含まれていません")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token: no user ID")
+
+    updated_quote = await mark_quote_state(quote_id, user_id_from_token, new_state=update_model.new_state)
     return updated_quote

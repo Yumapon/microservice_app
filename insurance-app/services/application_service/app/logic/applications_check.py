@@ -11,10 +11,6 @@ from app.services.rate_loader import load_interest_rates
 
 logger = logging.getLogger(__name__)
 
-# MongoDBのコレクション名（想定）
-RATE_DB = "rate_db"
-RATE_COLLECTION = "interest_rates"
-
 async def validate_quote_before_application(
     user_id: str,
     quote: dict,
@@ -46,12 +42,6 @@ async def validate_quote_before_application(
     logger.info(f"quote_interest_rate={quote_interest_rate}")
     if quote_interest_rate is None:
         raise ValueError("見積もりに利率情報が含まれていません")
-    
-    #見積もりの利率を取得(最低保証)
-    #quote_min_rate = quote.get("min_rate")
-    #logger.info(f"quote_min_rate={quote_min_rate}")
-    #if quote_min_rate is None:
-    #    raise ValueError("見積もりに利率情報が含まれていません")
 
     #見積もりの契約日を取得
     # 引数 quote["contract_date"] が文字列なら datetime に変換してUTCに

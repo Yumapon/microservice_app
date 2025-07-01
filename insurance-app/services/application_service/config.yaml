@@ -6,6 +6,9 @@ mongodb:
   database: "rate_db"
   collection: "interest_rates"
 
+nats:
+  address: "nats://localhost:4222"
+
 keycloak:
   keycloak_base_url: "http://localhost:8080/realms/internet-service-relm"
   client_id: "insurance-app"

@@ -2,13 +2,55 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <title>保険アプリ API ドキュメント</title>
+    <title>保険アプリ API & Event ドキュメント</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Swagger UI -->
     <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css" />
+
+    <!-- AsyncAPI Web Component -->
+    <script src="https://unpkg.com/@asyncapi/web-component@1.0.0-next.39/lib/standalone/index.js"></script>
+
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 0;
+        padding: 0;
+      }
+      h1 {
+        background: #004080;
+        color: white;
+        padding: 1rem;
+        margin: 0;
+      }
+      .section {
+        padding: 1rem;
+      }
+      #swagger-ui,
+      asyncapi-component {
+        margin-top: 1rem;
+        border-top: 1px solid #ccc;
+        padding-top: 1rem;
+      }
+    </style>
   </head>
   <body>
-    <div id="swagger-ui"></div>
+    <h1>保険アプリ API ドキュメント</h1>
 
+    <div class="section">
+      <h2>🔷 REST API (OpenAPI)</h2>
+      <div id="swagger-ui"></div>
+    </div>
+
+    <div class="section">
+      <h2>🔶 Event API (AsyncAPI)</h2>
+      <asyncapi-component
+        schema-url="asyncapi.yaml"
+        css-import-path="https://unpkg.com/@asyncapi/react-component@1.0.0-next.39/styles/default.min.css"
+      ></asyncapi-component>
+    </div>
+
+    <!-- Swagger UI JS -->
     <script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script>
     <script>
       SwaggerUIBundle({

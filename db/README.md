@@ -1,100 +1,76 @@
-# DB設計
-
-## DDL出力用 プロンプトテンプレート（mermaid & openapi => DDL）
-
-あなたは、モバイルアプリおよびマイクロサービスアーキテクチャ、データベース管理に精通したプロフェッショナルなソフトウェア、データベースアーキテクトです。
-
-以下に示すMermaid形式のシーケンス図と、Openapiファイルをもとに、RDB(PostgreSQL)およびMongoDBの**DDL(マークダウン形式)**を出力してください。出力対象は、Mermaid形式のシーケンス図中に登場する各DB（MongoDB (商品データ)やRDB (見積もりデータ)など）です。
-
-- 各DDLに対して、説明文を入れてわかりやすくしてください。
-- 出力するDDLになった理由(データ形式や、項目)の説明を別途出力してください。
-
-もし前提条件や不明点がある場合は、出力前に**質問リストを提示**してください。
+# DB構成
 
 ## ER図
 
 ```mermaid
 erDiagram
 
-%% --- PostgreSQL (RDB) ---
-RDB-quotes {
-    string quote_id PK
-    string user_id
-    string plan_id
-    int payment_period
-    int monthly_premium
-    string refund_condition
-    int expected_refund
-    float interest_rate_snapshot
-    datetime valid_until
-    datetime created_at
+quotes {
+    UUID quote_id PK
+    UUID user_id
+    DATE birth_date
+    TEXT gender
+    INTEGER monthly_premium
+    INTEGER payment_period_years
+    BOOLEAN tax_deduction_enabled
+    DATE contract_date
+    NUMERIC contract_interest_rate
+    INTEGER total_paid_amount
+    INTEGER pension_start_age
+    INTEGER annual_tax_deduction
+    JSONB scenario_data
+    VARCHAR quote_state
+    TIMESTAMP created_at
 }
 
-RDB-applications {
-    string application_id PK
-    string quote_id
-    string user_id
-    string application_status  
-    %% ENUM('pending', 'submitted', 'deleted')
-    boolean user_consent
-    datetime applied_at
-    datetime deleted_at 
-    %% nullable
+applications {
+    UUID application_id PK
+    UUID quote_id FK
+    UUID user_id
+    VARCHAR application_status
+    BOOLEAN user_consent
+    TIMESTAMP applied_at
+    TIMESTAMP deleted_at
+    DATE snapshot_birth_date
+    TEXT snapshot_gender
+    INTEGER snapshot_monthly_premium
+    INTEGER snapshot_payment_period_years
+    BOOLEAN snapshot_tax_deduction_enabled
+    DATE snapshot_contract_date
+    NUMERIC snapshot_contract_interest_rate
+    INTEGER snapshot_total_paid_amount
+    INTEGER snapshot_pension_start_age
+    INTEGER snapshot_annual_tax_deduction
+    JSONB scenario_data
+    TIMESTAMP created_at
 }
 
-RDB-contracts {
-    string contract_id PK
-    string application_id
-    string user_id
-    datetime contract_start_date
-    datetime contract_end_date
-    string plan_id
-    float agreed_rate
-    int agreed_premium
-    string contract_terms 
-    %% 本来TEXT
+contracts {
+    UUID contract_id PK
+    UUID quote_id FK
+    UUID application_id FK
+    UUID user_id
+    BOOLEAN user_consent
+    TIMESTAMP applied_at
+    DATE birth_date
+    TEXT gender
+    INTEGER monthly_premium
+    INTEGER payment_period_years
+    BOOLEAN tax_deduction_enabled
+    DATE contract_date
+    NUMERIC contract_interest_rate
+    INTEGER total_paid_amount
+    INTEGER pension_start_age
+    INTEGER annual_tax_deduction
+    JSONB scenario_data
+    TIMESTAMP created_at
 }
 
-%% --- MongoDB (NoSQL) ---
-Mongo-plans {
-    string plan_id PK
-    string name
-    string description
-    string image_key
-    string rates_by_period 
-    %% JSON形式の配列（注記）
-}
-
-Mongo-notifications {
-    string message_id PK
-    string title
-    string content
-    datetime published_at
-    datetime expires_at 
-    %% optional
-}
-
-Mongo-user_notifications_status {
-    string user_id PK
-    string read_message_ids FK
-    %% 配列（注記）
-}
-
-Mongo-user_settings {
-    string user_id PK
-    string settings 
-    %% スキーマレスJSON（注記）
-}
-
-%% --- 関係 ---
-RDB-quotes ||--o{ RDB-applications : has
-RDB-applications ||--|| RDB-contracts : produces
-RDB-applications ||--|| RDB-quotes : refers
-RDB-quotes ||--|| Mongo-plans : refers
-RDB-contracts ||--|| Mongo-plans : refers
-Mongo-user_notifications_status ||--|| Mongo-notifications : read
-
+quotes ||--o{ applications : has
+applications ||--|| contracts : creates
+quotes ||--o{ contracts : linked_by
 ```
+
 
 ## DDLテンプレート
 
@@ -106,31 +82,33 @@ Mongo-user_notifications_status ||--|| Mongo-notifications : read
 DROP TABLE IF EXISTS quotes;
 
 CREATE TABLE quotes (
-    quote_id UUID PRIMARY KEY,                      -- 見積もりID
-    user_id TEXT NOT NULL,                          -- ユーザーID
+    quote_id UUID PRIMARY KEY,                         -- 見積もりID
+    user_id UUID NOT NULL,                             -- ユーザーID（Keycloakのsub）
 
     -- ユーザーの契約条件
-    birth_date DATE NOT NULL,                       -- 生年月日
-    gender TEXT NOT NULL,                           -- 性別
-    monthly_premium INTEGER NOT NULL,               -- 月額保険料
-    payment_period_years INTEGER NOT NULL,          -- 支払い年数
-    tax_deduction_enabled BOOLEAN NOT NULL,         -- 税制適格特約の有無
+    birth_date DATE NOT NULL,                          -- 生年月日
+    gender TEXT NOT NULL CHECK (gender IN ('male', 'female', 'other')),
+    monthly_premium INTEGER NOT NULL,                  -- 月額保険料
+    payment_period_years INTEGER NOT NULL,             -- 支払い年数
+    tax_deduction_enabled BOOLEAN NOT NULL,            -- 税制適格特約の有無
 
     -- 見積もり計算結果
-    contract_date DATE NOT NULL,                    -- 契約開始日
-    contract_interest_rate FLOAT NOT NULL,          -- 契約利率
-    total_paid_amount INTEGER NOT NULL,             -- 支払総額
-    pension_start_age INTEGER NOT NULL,             -- 年金開始年齢
-    annual_tax_deduction INTEGER NOT NULL,          -- 年間控除額
+    contract_date DATE NOT NULL,                       -- 契約開始日
+    contract_interest_rate NUMERIC(5,2) NOT NULL,      -- 契約利率（誤差対策）
+    total_paid_amount INTEGER NOT NULL,                -- 支払総額
+    pension_start_age INTEGER NOT NULL,                -- 年金開始年齢
+    annual_tax_deduction INTEGER NOT NULL,             -- 年間控除額
 
     -- シナリオ（jsonb配列）
-    scenario_data JSONB NOT NULL,                   -- 複数の利率シナリオデータ
+    scenario_data JSONB NOT NULL,                      -- 複数の利率シナリオ
 
     -- ステータス
-    quote_state VARCHAR(32) DEFAULT 'none',         -- 見積もり状態（none, applied など）
+    quote_state VARCHAR(32) DEFAULT 'none' CHECK (
+        quote_state IN ('none', 'applied', 'cancelled')
+    ),
 
     -- レコード作成日
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP  -- 作成日時
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
@@ -140,41 +118,104 @@ CREATE TABLE quotes (
 DROP TABLE IF EXISTS applications;
 
 CREATE TABLE applications (
-    application_id UUID PRIMARY KEY,                   -- 申込ID（UUID形式で一意に識別）
+    application_id UUID PRIMARY KEY,                   -- 申込ID
 
-    quote_id UUID NOT NULL,                            -- 対象となる見積もりID（quotes.quote_idを参照）
-    user_id UUID NOT NULL,                             -- 申込ユーザーID（Keycloakのsubと対応）
+    quote_id UUID NOT NULL REFERENCES quotes(quote_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,                             -- ユーザーID
 
     -- ステータス管理
-    application_status VARCHAR(32) DEFAULT 'none',     -- 申込状態（none, applied, cancelled, etc）
+    application_status VARCHAR(32) DEFAULT 'none' CHECK (
+        application_status IN ('none', 'applied', 'reverted', 'cancelled')
+    ),
 
     -- ユーザー同意とタイムスタンプ
-    user_consent BOOLEAN NOT NULL,                     -- 利用規約や約款への同意取得フラグ
-    applied_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,   -- 申込日時
-    deleted_at TIMESTAMP WITHOUT TIME ZONE             -- 削除日時（キャンセル・取り消し時など、NULL許容）
+    user_consent BOOLEAN NOT NULL,
+    applied_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    deleted_at TIMESTAMP WITHOUT TIME ZONE,
+
+    -- スナップショット：契約条件
+    snapshot_birth_date DATE NOT NULL,
+    snapshot_gender TEXT NOT NULL CHECK (snapshot_gender IN ('male', 'female', 'other')),
+    snapshot_monthly_premium INTEGER NOT NULL,
+    snapshot_payment_period_years INTEGER NOT NULL,
+    snapshot_tax_deduction_enabled BOOLEAN NOT NULL,
+
+    -- スナップショット：見積もり計算結果
+    snapshot_contract_date DATE NOT NULL,
+    snapshot_contract_interest_rate NUMERIC(5,2) NOT NULL,
+    snapshot_total_paid_amount INTEGER NOT NULL,
+    snapshot_pension_start_age INTEGER NOT NULL,
+    snapshot_annual_tax_deduction INTEGER NOT NULL,
+
+    -- シナリオ
+    scenario_data JSONB NOT NULL,
+
+    -- レコード作成日
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
 ```sql
--- 保険契約情報を保持するテーブル
+DROP TABLE IF EXISTS contracts;
+
 CREATE TABLE contracts (
-    contract_id VARCHAR(64) PRIMARY KEY,
-    application_id VARCHAR(64) NOT NULL REFERENCES applications(application_id),
-    user_id VARCHAR(64) NOT NULL,
-    contract_start_date DATE NOT NULL,
-    contract_end_date DATE,
-    plan_id VARCHAR(64) NOT NULL,
-    agreed_rate FLOAT NOT NULL,
-    agreed_premium INTEGER NOT NULL,
-    contract_terms TEXT
+    contract_id UUID PRIMARY KEY,
+
+    quote_id UUID NOT NULL REFERENCES quotes(quote_id) ON DELETE CASCADE,
+    application_id UUID NOT NULL REFERENCES applications(application_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
+
+    -- ユーザー同意とタイムスタンプ
+    user_consent BOOLEAN NOT NULL,
+    applied_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+
+    -- ユーザー契約条件
+    birth_date DATE NOT NULL,
+    gender TEXT NOT NULL CHECK (gender IN ('male', 'female', 'other')),
+    monthly_premium INTEGER NOT NULL,
+    payment_period_years INTEGER NOT NULL,
+    tax_deduction_enabled BOOLEAN NOT NULL,
+
+    -- 見積もり計算結果
+    contract_date DATE NOT NULL,
+    contract_interest_rate NUMERIC(5,2) NOT NULL,
+    total_paid_amount INTEGER NOT NULL,
+    pension_start_age INTEGER NOT NULL,
+    annual_tax_deduction INTEGER NOT NULL,
+
+    -- シナリオ
+    scenario_data JSONB NOT NULL,
+
+    -- レコード作成日
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
 ---
 
-### 🟩 MongoDB用 スキーマ定義例（JSON風）
+### 🟩 MongoDB用 スキーマ定義
 
 **保険商品情報**
+
+db: 
+
+```
+insurance
+```
+
+data:
+```json
+{
+  plan_id: str,
+  name: str,
+  description: str,
+  image_key: str
+}
+```
+
+sampledata登録
+
+* sampledata登録
 ```javascript
 use insurance;
 
@@ -196,6 +237,25 @@ db.plans.insertMany([
 
 **金利データ**
 
+db: 
+
+```
+rate_db
+```
+
+data:
+```json
+{
+    "product_type": str,
+    "rate_type": str,
+    "rate": float,
+    "start_date": ISODate("date"),
+    "end_date": ISODate("date"),
+    "guaranteed_minimum_rate": float
+  },
+```
+
+sampledata登録
 ```javascript
 use rate_db;
 
@@ -218,31 +278,5 @@ db.interest_rates.insertMany([
   }
 ]);
 ```
-
----
-
-### 🧠 スキーマ設計の背景と選定理由
-
-#### ✅ PostgreSQL（RDB）採用理由
-
-| テーブル           | 理由                                   |
-| -------------- | ------------------------------------ |
-| `quotes`       | トランザクション管理が必要（計算値、履歴の一貫性保持）          |
-| `applications` | 申込ステータス・同一ユーザーの複数申込を整合的に管理する必要があるため  |
-| `contracts`    | 明確な契約履歴・期間管理・金額情報が必要なため。RDBで整合性保証が容易 |
-
-* 各テーブルには `user_id` を保持し、Keycloakとのユーザー識別連携を担保
-* `interest_rate_snapshot` など、変動する参照情報は冗長に保持して一貫性を確保
-
----
-
-#### ✅ MongoDB（NoSQL）採用理由
-
-| コレクション                      | 理由                                    |
-| --------------------------- | ------------------------------------- |
-| `plans`                     | 商品情報が階層・配列構造（利率履歴含む）を持ち、柔軟性が求められる     |
-| `notifications`             | 一括配信で多数の読み込みアクセスがあるため、スキーマの柔軟性と拡張性が必要 |
-| `user_notifications_status` | ユーザーごとに「お知らせの既読一覧」を持つため、更新・検索の柔軟性が必要  |
-| `user_settings`             | 設定項目が今後変化・増加する可能性があり、スキーマレスな保存が望ましい   |
 
 ---

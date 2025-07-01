@@ -10,6 +10,7 @@ FastAPI アプリケーション起動スクリプト
 # ------------------------------------------------------------------------------
 # インポート
 # ------------------------------------------------------------------------------
+import asyncio
 import logging
 
 from fastapi import FastAPI
@@ -17,6 +18,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.routes import quotes
 from app.config.config import Config
+from app.services.nats_subscriber import run_nats_subscriber
 
 # ------------------------------------------------------------------------------
 # 設定・構成の読み込み
@@ -27,7 +29,7 @@ config = Config()
 # ログ設定（日本語対応）
 # ------------------------------------------------------------------------------
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="[%(asctime)s] [%(levelname)s] %(name)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
@@ -53,3 +55,9 @@ async def startup_db_client():
     """
     logger.info("MongoDB クライアントの初期化")
     app.state.mongo_client = AsyncIOMotorClient(config.mongodb["dsn"])
+
+# 起動時に NATS 購読を開始
+@app.on_event("startup")
+async def startup_event():
+    logging.basicConfig(level=logging.INFO)
+    asyncio.create_task(run_nats_subscriber())

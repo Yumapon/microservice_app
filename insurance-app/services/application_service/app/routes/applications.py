@@ -1,68 +1,144 @@
 # -*- coding: utf-8 -*-
 """
 保険契約申込APIエンドポイント
+
+- 申込の作成
+- 自ユーザーの申込一覧・詳細の取得
+- 自ユーザーの申込キャンセル（ステータス更新）
 """
 
 import logging
+from typing import List
 from fastapi import APIRouter, Depends, Path, HTTPException, status
-from motor.motor_asyncio import AsyncIOMotorClient
-import httpx
 
-from app.dependencies.auth import require_quote_write_permission
+from app.dependencies.auth import require_application_write_permission, require_application_read_permission
+from app.models.applications import (
+    ApplicationRequestModel,
+    ApplicationResponseModel,
+    ApplicationStatusResponseModel
+)
+from app.services.application_manager import (
+    create_application,
+    get_applications_by_user_id,
+    get_application_by_id,
+    update_application_status
+)
+
+from motor.motor_asyncio import AsyncIOMotorClient
 from app.dependencies.get_mongo_client import get_mongo_client
-from app.services.application_manager import create_application, get_quote_from_quotation_service
-from app.models.applications import ApplicationResponseModel
 from app.logic.applications_check import validate_quote_before_application
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# ------------------------------------------------------
-# POST /applications/{quote_id}
-# ------------------------------------------------------
-@router.post("/applications/{quote_id}", response_model=ApplicationResponseModel)
-async def post_application_from_quote(
-    quote_id: str = Path(..., description="申し込み対象の見積もりID"),
-    token_payload: dict = Depends(require_quote_write_permission),
-    mongo_client: AsyncIOMotorClient = Depends(get_mongo_client)
+# ------------------------------------------------------------------------------
+# POST /applications
+# ------------------------------------------------------------------------------
+@router.post("/applications", response_model=ApplicationResponseModel)
+async def post_application(
+    request_model: ApplicationRequestModel,
+    token_payload: dict = Depends(require_application_write_permission),
+    mongo_client: AsyncIOMotorClient = Depends(get_mongo_client),
 ):
     """
-    特定の見積もりIDに基づいて保険申込処理を実施する。
-    """
-    user_id_from_token = token_payload.get("sub")
-    if not user_id_from_token:
-        logger.warning("アクセストークンにsubが含まれていません")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token: no user ID")
+    新規の保険申込を作成する（MongoDBの利率と整合性チェックを含む）
 
-    logger.info(f"【API】/api/v1/applications/{quote_id} 呼び出し (user_id={user_id_from_token})")
+    Parameters:
+        request_model (ApplicationRequestModel): 申込情報（見積もりデータ含む）
+        token_payload (dict): Keycloakトークンから取得したユーザー情報
+        mongo_client (AsyncIOMotorClient): MongoDBクライアント
+
+    Returns:
+        ApplicationResponseModel: 登録された申込情報
+
+    Raises:
+        HTTPException: 利率の不整合などで申込を拒否する場合
+    """
+    logger.info("【API】POST /applications 保険申込作成呼び出し")
+
+    user_id_from_token = token_payload.get("sub")
+    access_token = token_payload.get("access_token")
+    quote_data = request_model.quote
 
     try:
-        # Step 1: 見積もり情報を取得
-        quote = await get_quote_from_quotation_service(
-            quote_id=quote_id,
-            access_token=token_payload["access_token"]
+        # 🔍 申込前にMongoDBの利率と整合性チェックを実施
+        await validate_quote_before_application(
+            user_id=user_id_from_token,
+            quote=quote_data,
+            mongo_client=mongo_client
         )
+    except ValueError as e:
+        logger.warning("申込前チェックに失敗: %s", str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-        # Step 2: 整合性チェック（ユーザーID一致＋利率が最新）
-        await validate_quote_before_application(user_id=user_id_from_token, quote=quote, mongo_client=mongo_client)
+    # ✅ チェックOKなら申込実行
+    return await create_application(user_id_from_token, quote_data, access_token, status="applied")
 
-        # Step 3: 申込処理
-        application_result = await create_application(
-            user_id=user_id_from_token, 
-            quote=quote, 
-            access_token=token_payload["access_token"]
-        )
-        
-        logger.info(f"申込完了: application_id={application_result.application_id}")
-        return application_result
 
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
+# ------------------------------------------------------------------------------
+# GET /my/applications
+# ------------------------------------------------------------------------------
+@router.get("/my/applications", response_model=List[ApplicationResponseModel])
+async def get_my_applications(
+    token_payload: dict = Depends(require_application_read_permission),
+):
+    """
+    自分の保険申込一覧を取得する
 
-    except httpx.HTTPStatusError as e:
-        logger.error(f"quotation_service エラー: {e.response.status_code}")
-        raise HTTPException(status_code=e.response.status_code, detail="見積もり取得または更新エラー")
+    Parameters:
+        token_payload (dict): Keycloakトークンから取得したユーザー情報
 
-    except Exception as e:
-        logger.exception("申込処理中に予期しないエラーが発生しました")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="申込処理エラー")
+    Returns:
+        List[ApplicationResponseModel]: 自ユーザーの申込一覧
+    """
+    logger.info("【API】GET /my/applications 申込一覧取得呼び出し")
+    user_id_from_token = token_payload.get("sub")
+    return await get_applications_by_user_id(user_id_from_token)
+
+# ------------------------------------------------------------------------------
+# GET /my/applications/{application_id}
+# ------------------------------------------------------------------------------
+@router.get("/my/applications/{application_id}", response_model=ApplicationResponseModel)
+async def get_my_application_by_id(
+    application_id: str = Path(..., description="取得対象の申込ID"),
+    token_payload: dict = Depends(require_application_read_permission),
+):
+    """
+    自分の特定の保険申込情報を取得する
+
+    Parameters:
+        application_id (str): 対象申込ID
+        token_payload (dict): Keycloakトークンから取得したユーザー情報
+
+    Returns:
+        ApplicationResponseModel: 指定IDの申込情報
+    """
+    logger.info("【API】GET /my/applications/%s 詳細取得呼び出し", application_id)
+    user_id_from_token = token_payload.get("sub")
+    return await get_application_by_id(application_id, user_id_from_token)
+
+# ------------------------------------------------------------------------------
+# PUT /my/applications/{application_id}/cancel
+# ------------------------------------------------------------------------------
+@router.put("/my/applications/{application_id}/cancel", response_model=ApplicationStatusResponseModel)
+async def cancel_my_application(
+    application_id: str = Path(..., description="キャンセル対象の申込ID"),
+    token_payload: dict = Depends(require_application_write_permission),
+):
+    """
+    自分の保険申込をキャンセルする（状態を 'cancelled' に更新）
+
+    Parameters:
+        application_id (str): 対象の申込ID
+        token_payload (dict): Keycloakトークンから取得したユーザー情報
+
+    Returns:
+        ApplicationResponseModel: 更新後の申込情報
+    """
+    logger.info("【API】PUT /my/applications/%s/cancel キャンセル呼び出し", application_id)
+    user_id_from_token = token_payload.get("sub")
+
+    try:
+        return await update_application_status(application_id, user_id_from_token, new_status="cancelled")
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

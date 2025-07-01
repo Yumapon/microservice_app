@@ -263,6 +263,15 @@ paths:
           schema:
             type: string
             format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteStateUpdateModel'
+            example:
+              value:
+                new_state: "applied"
       responses:
         '200':
           description: 状態更新後の見積もりデータ
@@ -279,42 +288,133 @@ paths:
         '500':
           description: サーバ内部エラー
 
-  /api/v1/applications/{quote_id}:
+  /api/v1/applications:
     post:
       tags:
         - Application
-      summary: 保険契約申込
-      description: 指定された見積もりIDに基づき、契約申込を行います。
+      summary: 保険契約申込の作成
+      description: 指定された見積もり情報を基に、保険申込を新規作成します（利率の整合性チェックを含む）。
       security:
         - bearerAuth: []
-      parameters:
-        - name: quote_id
-          in: path
-          required: true
-          description: 見積もりID（UUID）
-          schema:
-            type: string
-            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationRequestModel'
+            example:
+              quote:
+                quote_id: "123e4567-e89b-12d3-a456-426614174000"
+                user_id: "user-001"
+                birth_date: "1990-01-01"
+                gender: "male"
+                monthly_premium: 20000
+                payment_period_years: 30
+                tax_deduction_enabled: true
+                contract_date: "2025-07-01"
+                contract_interest_rate: 1.2
+                total_paid_amount: 7200000
+                pension_start_age: 60
+                annual_tax_deduction: 40000
+                scenario_data:
+                  - scenario_name: "標準"
+                    assumed_interest_rate: 1.2
+                    total_refund_amount: 9108000
+                    annual_annuity: 910800
+                    lump_sum_amount: 9108000
+                    refund_on_15_years: 4554000
+                    refund_rate_on_15_years: 101.2
       responses:
-        "200":
-          description: 申込成功時のレスポンス
+        '200':
+          description: 申込作成成功
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ApplicationResponseModel"
-              example:
-                application_id: "b7d9c8f0-5c8d-4c82-9364-b1d2c8362ea5"
-                quote_id: "0d853368-4bdf-49cf-bfcd-b1fc313dabdc"
-                status: "applied"
-        "401":
-          description: 認証失敗（アクセストークン不正または欠如）
-        "403":
-          description: 他人の見積もりに対する申込を試みた場合
-        "404":
-          description: 指定された見積もりが存在しない
-        "500":
-          description: サーバ内部エラー
+                $ref: '#/components/schemas/ApplicationResponseModel'
+        '400':
+          description: 整合性チェック失敗などによる申込エラー
+        '401':
+          description: 認証失敗（アクセストークン無効）
 
+  /api/v1/my/applications:
+    get:
+      tags:
+        - Application
+      summary: ログインユーザーの申込一覧取得
+      description: ログインユーザーに紐づく保険申込情報の一覧を取得します。
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 申込一覧の取得に成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApplicationResponseModel'
+        '401':
+          description: 認証失敗（アクセストークン無効）
+
+  /api/v1/my/applications/{application_id}:
+    get:
+      tags:
+        - Application
+      summary: 特定申込情報の取得
+      description: ログインユーザーが作成した指定申込IDに該当する保険申込の詳細情報を取得します。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: application_id
+          in: path
+          required: true
+          description: 申込ID（UUID）
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 指定申込の取得に成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponseModel'
+        '401':
+          description: 認証失敗
+        '403':
+          description: 他人の申込にアクセスしようとした場合
+        '404':
+          description: 該当申込が存在しない
+
+  /api/v1/my/applications/{application_id}/cancel:
+    put:
+      tags:
+        - Application
+      summary: 保険申込のキャンセル
+      description: 指定された申込IDに対して、申込ステータスを 'cancelled' に変更します。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: application_id
+          in: path
+          required: true
+          description: キャンセル対象の申込ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: キャンセル成功時のステータス応答
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationStatusResponseModel'
+        '400':
+          description: ステータス変更不可などの不正リクエスト
+        '401':
+          description: 認証失敗
+        '403':
+          description: 他人の申込に対するキャンセル
+        '404':
+          description: 申込が存在しない
 
 components:
   securitySchemes:
@@ -455,6 +555,16 @@ components:
         - refund_on_15_years
         - refund_rate_on_15_years
 
+    QuoteStateUpdateModel:
+      type: object
+      properties:
+        new_state:
+          type: string
+          enum: ["none", "applied", "reverted", "cancelled"]
+          description: 更新後のステータス（quote_state）
+      required:
+        - new_state
+
     ApplicationResponseModel:
       type: object
       properties:
@@ -474,3 +584,116 @@ components:
         - application_id
         - quote_id
         - status
+
+    ApplicationRequestModel:
+      type: object
+      properties:
+        quote:
+          type: object
+          description: quotation_service から取得した見積もりスナップショット情報
+      required:
+        - quote
+      example:
+        quote:
+          quote_id: "123e4567-e89b-12d3-a456-426614174000"
+          user_id: "user-001"
+          birth_date: "1990-01-01"
+          gender: "male"
+          monthly_premium: 20000
+          payment_period_years: 30
+          tax_deduction_enabled: true
+          contract_date: "2025-07-01"
+          contract_interest_rate: 1.2
+          total_paid_amount: 7200000
+          pension_start_age: 60
+          annual_tax_deduction: 40000
+          scenario_data:
+            - scenario_name: "標準"
+              assumed_interest_rate: 1.2
+              total_refund_amount: 9108000
+              annual_annuity: 910800
+              lump_sum_amount: 9108000
+              refund_on_15_years: 4554000
+              refund_rate_on_15_years: 101.2
+
+    ApplicationResponseModel:
+      type: object
+      properties:
+        application_id:
+          type: string
+          description: 申込ID（UUID）
+        quote_id:
+          type: string
+          description: 対象となった見積もりID
+        status:
+          type: string
+          enum: [none, applied, reverted, cancelled]
+          description: 現在の申込ステータス
+        snapshot_birth_date:
+          type: string
+          format: date
+        snapshot_gender:
+          type: string
+          enum: [male, female, other]
+        snapshot_monthly_premium:
+          type: integer
+        snapshot_payment_period_years:
+          type: integer
+        snapshot_tax_deduction_enabled:
+          type: boolean
+        snapshot_contract_date:
+          type: string
+          format: date
+        snapshot_contract_interest_rate:
+          type: number
+        snapshot_total_paid_amount:
+          type: integer
+        snapshot_pension_start_age:
+          type: integer
+        snapshot_annual_tax_deduction:
+          type: integer
+        scenario_data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PensionQuoteScenarioModel'
+      required:
+        - application_id
+        - quote_id
+        - status
+        - snapshot_birth_date
+        - snapshot_gender
+        - snapshot_monthly_premium
+        - snapshot_payment_period_years
+        - snapshot_tax_deduction_enabled
+        - snapshot_contract_date
+        - snapshot_contract_interest_rate
+        - snapshot_total_paid_amount
+        - snapshot_pension_start_age
+        - snapshot_annual_tax_deduction
+        - scenario_data
+
+    PensionQuoteScenarioModel:
+      type: object
+      properties:
+        scenario_name:
+          type: string
+        assumed_interest_rate:
+          type: number
+        total_refund_amount:
+          type: integer
+        annual_annuity:
+          type: integer
+        lump_sum_amount:
+          type: integer
+        refund_on_15_years:
+          type: integer
+        refund_rate_on_15_years:
+          type: number
+      required:
+        - scenario_name
+        - assumed_interest_rate
+        - total_refund_amount
+        - annual_annuity
+        - lump_sum_amount
+        - refund_on_15_years
+        - refund_rate_on_15_years
