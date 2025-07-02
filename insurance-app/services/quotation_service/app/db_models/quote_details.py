@@ -10,10 +10,20 @@ MongoDB等の外部情報と連携する場合は plan_code を利用する。
 # ------------------------------------------------------------------------------
 # インポート
 # ------------------------------------------------------------------------------
-from sqlalchemy import Column, Date, Integer, Boolean, Numeric, ForeignKey, TIMESTAMP, String, text
+from datetime import datetime
+from sqlalchemy import (
+    Column,
+    Date,
+    Integer,
+    Boolean,
+    Numeric,
+    ForeignKey,
+    TIMESTAMP,
+    String,
+    text
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
 
 Base = declarative_base()
 
@@ -35,24 +45,29 @@ class QuoteDetail(Base):
         comment="見積もりID（quotesと1対1）"
     )
 
-    plan_code = Column(
-        String,
-        nullable=True,
-        comment="商品コード（MongoDBのplan情報と連携するための識別子）"
-    )
-
+    # 契約条件
     birth_date = Column(Date, nullable=False, comment="契約者の生年月日")
-    gender = Column(String, nullable=False, comment="性別（'男' または '女'）")
+    gender = Column(
+        String,
+        nullable=False,
+        comment="性別（'male', 'female', 'other'）"
+    )
     monthly_premium = Column(Integer, nullable=False, comment="月額保険料（円）")
     payment_period_years = Column(Integer, nullable=False, comment="払込期間（年）")
     tax_deduction_enabled = Column(Boolean, nullable=False, comment="税制適格特約の有無（True/False）")
+    pension_payment_years = Column(Integer, nullable=False, server_default="10", comment="年金受取年数（年）")
 
+    # 計算結果
     contract_date = Column(Date, nullable=False, comment="契約開始日")
     contract_interest_rate = Column(Numeric(5, 2), nullable=False, comment="契約時利率（%）")
     total_paid_amount = Column(Integer, nullable=False, comment="総払込額（円）")
     pension_start_age = Column(Integer, nullable=False, comment="年金受給開始年齢")
     annual_tax_deduction = Column(Integer, nullable=False, comment="年間税控除額（円）")
 
+    # 商品連携用コード（任意）
+    plan_code = Column(String, nullable=True, comment="商品コード（MongoDB商品情報と連携）")
+
+    # メタ情報
     created_at = Column(
         TIMESTAMP(timezone=True),
         nullable=False,
@@ -66,6 +81,5 @@ class QuoteDetail(Base):
         onupdate=datetime.utcnow,
         comment="更新日時"
     )
-
     created_by = Column(String, nullable=True, comment="作成者（ユーザーIDまたはオペレータID）")
     updated_by = Column(String, nullable=True, comment="更新者（ユーザーIDまたはオペレータID）")

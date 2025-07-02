@@ -23,6 +23,7 @@ CREATE TABLE quote_details (
     monthly_premium INTEGER NOT NULL,                  -- 月額保険料
     payment_period_years INTEGER NOT NULL,             -- 支払い年数
     tax_deduction_enabled BOOLEAN NOT NULL,            -- 税制適格特約の有無
+    pension_payment_years INTEGER NOT NULL DEFAULT 10  -- 年金受取年数（例：10年分割など）
 
     -- 計算結果
     contract_date DATE NOT NULL,                       -- 契約開始日

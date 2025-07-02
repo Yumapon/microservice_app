@@ -7,9 +7,9 @@
 # ------------------------------------------------------------------------------
 # インポート
 # ------------------------------------------------------------------------------
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, conint
 
@@ -29,6 +29,7 @@ class PensionQuoteRequestModel(BaseModel):
     payment_period_years: conint(ge=15, le=45) = Field(
         ..., description="払込期間（15〜45年）"
     )
+    pension_duration_years: conint(ge=5, le=30) = Field(..., description="年金受取期間（5〜30年）")
     tax_deduction_enabled: bool = Field(..., description="税制適格特約の有無（True/False）")
 
 # ------------------------------------------------------------------------------
@@ -39,13 +40,16 @@ class PensionQuoteScenarioModel(BaseModel):
     利率シナリオごとの見積もり結果モデル
     一つの見積もりに対して複数のシナリオを保持
     """
-    scenario_name: str = Field(..., description="シナリオ名（高金利、標準、最低保証など）")
-    assumed_interest_rate: float = Field(..., description="想定利率（%）")
-    total_refund_amount: int = Field(..., description="累計返戻金額（円）")
-    annual_annuity: int = Field(..., description="年金受取時の年間金額（円）")
+    quote_id: UUID = Field(..., description="見積もりID（PostgreSQL連携用）")
+    scenario_type: Literal["base", "high", "low"] = Field(..., description="シナリオ種別")
+    interest_rate: float = Field(..., description="利率（%）")
+    estimated_pension: int = Field(..., description="想定年金額（例：10年分割合計）")
+    refund_rate: float = Field(..., description="15年払込時点の返戻率（%）")
+    refund_on_15_years: int = Field(..., description="15年払込時点の返戻金（円）")
     lump_sum_amount: int = Field(..., description="一括受取額（円）")
-    refund_on_15_years: int = Field(..., description="15年払込時点の返戻金額（円）")
-    refund_rate_on_15_years: float = Field(..., description="15年払込時点の返戻率（%）")
+    note: Optional[str] = Field(None, description="補足情報（任意）")
+    created_at: Optional[datetime] = Field(None, description="MongoDB側の作成日時")
+    updated_at: Optional[datetime] = Field(None, description="MongoDB側の更新日時")
 
 # ------------------------------------------------------------------------------
 # 出力モデル（バックエンド → フロントエンド）

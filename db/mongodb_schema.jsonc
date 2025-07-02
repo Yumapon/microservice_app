@@ -1,18 +1,24 @@
 
 // ============================================================================
 // MongoDB Collection: quote_scenarios
-// 概要: 見積もりに紐づく複数シナリオ（利率・返戻額など）の格納
+// 概要: 見積もりに紐づく複数の利率シナリオ（年金形式、一括受取、返戻金シミュレーション）
+// 備考: PostgreSQLの quotes テーブルの quote_id をキーとして参照
 // ============================================================================
 {
-    "_id": ObjectId,
-    "quote_id": "UUID",                              // 見積もりID（PostgreSQLと連携）
-    "scenario_type": "base" | "high" | "low",        // シナリオ種別（ベース/高金利/低金利）
-    "interest_rate": NumberDecimal("1.25"),          // 利率
-    "estimated_pension": NumberInt(5800000),         // 想定年金額
-    "refund_rate": NumberDecimal("103.2"),           // 返戻率
-    "note": "高金利シナリオ",                        // 補足メモ
-    "created_at": ISODate("2025-07-01T00:00:00Z")    // 作成日時
-  }
+  "_id": ObjectId("64a1f..."),                        // MongoDBの内部ID（自動生成）
+  "quote_id": "cb4ecb9f-4c14-4fcb-a931-b19f4421aa6f", // 見積もりID（PostgreSQLと連携）
+  "scenario_type": "base",                            // シナリオ種別: base | high | low
+                                                      // base: 標準利率 / high: 高金利 / low: 最低保証
+  "interest_rate": NumberDecimal("1.25"),             // 想定利率（年利%, 小数）
+  "estimated_pension": NumberInt(5800000),            // 年金形式で受け取る想定額（総額、10年受取など）
+  "lump_sum_amount": NumberInt(6000000),              // 一括受取額（利率を含む将来価値）
+  "refund_on_15_years": NumberInt(3900000),           // 15年間払込んだ場合の返戻金
+  "refund_rate": NumberDecimal("103.2"),              // 15年払込時点の返戻率（%）
+  "note": "高金利シナリオ",                           // 補足説明（任意）
+  "created_at": ISODate("2025-07-01T00:00:00Z"),      // 作成日時（UTC）
+  "updated_at": ISODate("2025-07-01T00:00:00Z")       // 最終更新日時（省略可・自動更新も可）
+}
+
   
   // ============================================================================
   // MongoDB Collection: quote_status_history

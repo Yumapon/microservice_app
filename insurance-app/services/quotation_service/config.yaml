@@ -17,3 +17,9 @@ keycloak:
 session:
   normal_ttl: 1800
   rememberme_ttl: 2592000
+
+pension:
+  min_age: 20
+  max_age: 70
+  min_payment_years: 15
+  max_annual_tax_deduction: 40000
