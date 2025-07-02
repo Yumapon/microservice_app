@@ -1,6 +1,5 @@
 postgres:
   dsn: "postgresql://appuser:password@localhost:5432/insurance_db"
-  echo: True
 
 mongodb:
   dsn: "mongodb://localhost:27017/rate_db"

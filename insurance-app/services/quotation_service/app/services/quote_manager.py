@@ -1,313 +1,294 @@
 # -*- coding: utf-8 -*-
 """
-quotesテーブルとのデータやり取りを担うモジュール
-- 見積もりの取得
+quotes, quote_details, quote_scenarios テーブルと連携するサービス層モジュール
+
+- 見積もりの取得（一覧・個別）
 - 見積もりの保存
-- ステータス更新（申込時）
+- ステータス更新
 """
 
 import logging
-import json
-import asyncpg
 from typing import List
+from uuid import UUID
 
-from app.config.config import Config
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from fastapi import HTTPException
+
+from app.db.database import get_async_session
+from app.db_models.quotes import Quote
+from app.db_models.quote_details import QuoteDetail
+from app.db_models.quote_scenarios import QuoteScenario
 from app.models.quotes import (
     PensionQuoteRequestModel,
     PensionQuoteResponseModel,
-    PensionQuoteScenarioModel
+    PensionQuoteScenarioModel,
 )
 
-from fastapi import HTTPException, status
-
-# ------------------------------------------------------------------------------
-# 設定・ロガー初期化
-# ------------------------------------------------------------------------------
-config = Config()
 logger = logging.getLogger(__name__)
 
+####参照処理
 
 # ------------------------------------------------------------------------------
 # 見積もり一覧取得（ユーザー単位）
 # ------------------------------------------------------------------------------
-async def get_quotes_by_user_id(user_id: str) -> List[PensionQuoteResponseModel]:
+async def get_quotes_by_user_id(session: AsyncSession, user_id: UUID) -> List[PensionQuoteResponseModel]:
     """
-    指定ユーザーの見積もりを取得する（最新順）
-
-    Parameters:
-        user_id (str): ユーザーID
+    指定ユーザーの見積もりを最新順で取得
 
     Returns:
-        List[PensionQuoteResponseModel]: レスポンス用モデルのリスト
+        List[PensionQuoteResponseModel]
     """
-    logger.info("見積もり取得開始: user_id=%s", user_id)
-    conn = None
-    try:
-        conn = await asyncpg.connect(dsn=config.postgres["dsn"])
-        logger.debug("PostgreSQL接続成功")
+    logger.info("見積もり一覧取得: user_id=%s", user_id)
 
-        rows = await conn.fetch("""
-            SELECT * FROM quotes
-            WHERE user_id = $1
-            ORDER BY created_at DESC
-        """, user_id)
-        logger.debug("クエリ実行成功: 件数=%d", len(rows))
+    # quotes + quote_details JOIN
+    stmt = (
+        select(Quote, QuoteDetail)
+        .join(QuoteDetail, Quote.quote_id == QuoteDetail.quote_id)
+        .where(Quote.user_id == user_id)
+        .order_by(Quote.created_at.desc())
+    )
+    results = await session.execute(stmt)
+    records = results.all()
 
-        result = []
-        for row in rows:
-            scenarios = json.loads(row["scenario_data"])
-            response = PensionQuoteResponseModel(
-                quote_id=str(row["quote_id"]),
-                user_id=str(row["user_id"]),
-                contract_date=row["contract_date"],
-                contract_interest_rate=row["contract_interest_rate"],
-                total_paid_amount=row["total_paid_amount"],
-                payment_period_years=row["payment_period_years"],
-                pension_start_age=row["pension_start_age"],
-                annual_tax_deduction=row["annual_tax_deduction"],
-                scenarios=[PensionQuoteScenarioModel(**s) for s in scenarios]
-            )
-            result.append(response)
+    quote_ids = [r.Quote.quote_id for r in records]
+    scenarios_map = await _load_scenarios_map(session, quote_ids)
 
-        logger.info("見積もり取得成功: %d件", len(result))
-        return result
+    responses = []
+    for quote, detail in records:
+        scenario_models = scenarios_map.get(quote.quote_id, [])
+        responses.append(_build_response_model(quote, detail, scenario_models))
 
-    except Exception:
-        logger.exception("見積もり取得中にエラー")
-        raise
-
-    finally:
-        if conn:
-            await conn.close()
-            logger.debug("PostgreSQL接続クローズ")
+    return responses
 
 
 # ------------------------------------------------------------------------------
-# 見積もり単体取得（ID指定）
+# 見積もり単体取得
 # ------------------------------------------------------------------------------
-async def get_quote_by_id(quote_id: str) -> PensionQuoteResponseModel:
+async def get_quote_by_id(session: AsyncSession, quote_id: UUID) -> PensionQuoteResponseModel:
     """
-    指定IDの見積もりを1件取得
-
-    Parameters:
-        quote_id (str): 見積もりID
-
-    Returns:
-        PensionQuoteResponseModel: 表示用のレスポンスモデル
+    見積もりIDを指定して1件取得
     """
-    logger.info("見積もり単体取得: quote_id=%s", quote_id)
-    conn = None
-    try:
-        conn = await asyncpg.connect(dsn=config.postgres["dsn"])
-        logger.debug("PostgreSQL接続成功")
+    logger.info("見積もり取得: quote_id=%s", quote_id)
 
-        row = await conn.fetchrow("SELECT * FROM quotes WHERE quote_id = $1", quote_id)
-        if not row:
-            logger.warning("見積もりが存在しません: quote_id=%s", quote_id)
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="見積もりが存在しません")
+    result = await session.execute(
+        select(Quote, QuoteDetail)
+        .join(QuoteDetail)
+        .where(Quote.quote_id == quote_id)
+    )
+    record = result.first()
+    if not record:
+        raise HTTPException(status_code=404, detail="見積もりが存在しません")
 
-        scenarios = json.loads(row["scenario_data"])
-        logger.debug("見積もりデータ取得成功")
+    quote, detail = record
+    scenarios = await _load_scenarios_by_quote_id(session, quote_id)
+    return _build_response_model(quote, detail, scenarios)
 
-        return PensionQuoteResponseModel(
-            quote_id=str(row["quote_id"]),
-            user_id=str(row["user_id"]),
-            contract_date=row["contract_date"],
-            contract_interest_rate=row["contract_interest_rate"],
-            total_paid_amount=row["total_paid_amount"],
-            payment_period_years=row["payment_period_years"],
-            pension_start_age=row["pension_start_age"],
-            annual_tax_deduction=row["annual_tax_deduction"],
-            scenarios=[PensionQuoteScenarioModel(**s) for s in scenarios]
-        )
-
-    except Exception:
-        logger.exception("見積もり単体取得中にエラー")
-        raise
-
-    finally:
-        if conn:
-            await conn.close()
-            logger.debug("PostgreSQL接続クローズ")
-
+####更新処理
 
 # ------------------------------------------------------------------------------
 # 見積もり保存処理（新規登録）
 # ------------------------------------------------------------------------------
-async def save_quote(user_id: str, request: PensionQuoteRequestModel, response: PensionQuoteResponseModel):
+async def save_quote(
+    session: AsyncSession,
+    user_id: UUID,
+    request: PensionQuoteRequestModel,
+    response: PensionQuoteResponseModel,
+    plan_code: str = None,
+    operator_id: str = None
+):
     """
-    見積もりをquotesテーブルに保存する
+    見積もりを3テーブル（quotes, quote_details, quote_scenarios）に保存
 
     Parameters:
-        user_id (str): ユーザーID
+        session (AsyncSession): 非同期DBセッション
+        user_id (UUID): ユーザーID
         request (PensionQuoteRequestModel): 入力内容
-        response (PensionQuoteResponseModel): 計算結果（保存対象）
+        response (PensionQuoteResponseModel): 計算結果
     """
-    logger.info("見積もり保存: quote_id=%s", response.quote_id)
-    conn = None
-    try:
-        conn = await asyncpg.connect(dsn=config.postgres["dsn"])
-        logger.debug("PostgreSQL接続成功")
+    logger.info("見積もり保存開始: quote_id=%s", response.quote_id)
 
-        logger.debug("INSERT前のデータ: %s", json.dumps(response.dict()))
+    quote = Quote(
+        quote_id=response.quote_id,
+        user_id=user_id,
+        quote_state="none",
+        created_by=operator_id,
+        updated_by=operator_id,
+    )
 
-        await conn.execute("""
-            INSERT INTO quotes (
-                quote_id,
-                user_id,
-                birth_date,
-                gender,
-                monthly_premium,
-                payment_period_years,
-                tax_deduction_enabled,
-                contract_date,
-                contract_interest_rate,
-                total_paid_amount,
-                pension_start_age,
-                annual_tax_deduction,
-                scenario_data
-            )
-            VALUES (
-                $1, $2, $3, $4, $5, $6, $7,
-                $8, $9, $10, $11, $12, $13
-            )
-        """,
-            response.quote_id,
-            user_id,
-            request.birth_date.date(),
-            "male" if request.gender == "男" else "female",
-            request.monthly_premium,
-            request.payment_period_years,
-            request.tax_deduction_enabled,
-            response.contract_date.date(),
-            response.contract_interest_rate,
-            response.total_paid_amount,
-            response.pension_start_age,
-            response.annual_tax_deduction,
-            json.dumps([s.dict() for s in response.scenarios])
+    detail = QuoteDetail(
+        quote_id=response.quote_id,
+        plan_code=plan_code,
+        birth_date=request.birth_date,
+        gender=request.gender,
+        monthly_premium=request.monthly_premium,
+        payment_period_years=request.payment_period_years,
+        tax_deduction_enabled=request.tax_deduction_enabled,
+        contract_date=response.contract_date,
+        contract_interest_rate=response.contract_interest_rate,
+        total_paid_amount=response.total_paid_amount,
+        pension_start_age=response.pension_start_age,
+        annual_tax_deduction=response.annual_tax_deduction,
+        created_by=operator_id,
+        updated_by=operator_id,
+    )
+
+    scenarios = [
+        QuoteScenario(
+            quote_id=response.quote_id,
+            scenario_name=s.scenario_name,
+            assumed_interest_rate=s.assumed_interest_rate,
+            total_refund_amount=s.total_refund_amount,
+            annual_annuity=s.annual_annuity,
+            lump_sum_amount=s.lump_sum_amount,
+            refund_on_15_years=s.refund_on_15_years,
+            refund_rate_on_15_years=s.refund_rate_on_15_years
         )
+        for s in response.scenarios
+    ]
 
-        logger.info("見積もり保存完了")
+    session.add_all([quote, detail, *scenarios])
 
-    except Exception:
-        logger.exception("見積もり保存失敗: quote_id=%s", response.quote_id)
-        raise
-
-    finally:
-        if conn:
-            await conn.close()
-            logger.debug("PostgreSQL接続クローズ")
-
+    #Commit
+    await session.commit()
+    logger.info("見積もり保存完了")
 
 # ------------------------------------------------------------------------------
-# ステータス更新処理（任意ステータスに対応）
+# ステータス更新処理
 # ------------------------------------------------------------------------------
-async def mark_quote_state(quote_id: str, user_id: str, new_state: str) -> PensionQuoteResponseModel:
+async def mark_quote_state(session: AsyncSession, quote_id: UUID, user_id: UUID, new_state: str) -> PensionQuoteResponseModel:
     """
-    指定された見積もりのステータスを更新する（任意の quote_state に対応）
+    見積もりステータスを更新
+    """
+    logger.info("ステータス更新: quote_id=%s, new_state=%s", quote_id, new_state)
+
+    result = await session.execute(
+        select(Quote).where(Quote.quote_id == quote_id)
+    )
+    quote = result.scalar_one_or_none()
+
+    if not quote:
+        raise HTTPException(status_code=404, detail="見積もりが存在しません")
+    if quote.user_id != user_id:
+        raise HTTPException(status_code=403, detail="他人の見積もりは更新できません")
+
+    quote.quote_state = new_state
+
+    #Commit
+    await session.commit()
+
+    return await get_quote_by_id(session, quote_id)
+
+# ------------------------------------------------------------------------------
+# 任意フィールド更新処理
+# ------------------------------------------------------------------------------
+async def update_quote(
+    session: AsyncSession,
+    quote_id: UUID,
+    user_id: UUID,
+    updates: dict
+) -> PensionQuoteResponseModel:
+    """
+    見積もりの詳細情報（quote_details）を更新する
 
     Parameters:
-        quote_id (str): 見積もりID
-        user_id (str): 呼び出し元のユーザー（認可チェック用）
-        new_state (str): 新しいステータス（例："applied", "canceled" など）
-
-    Returns:
-        PensionQuoteResponseModel: 更新後の見積もり
+        updates: 更新対象のフィールド辞書（バリデーション済を想定）
     """
-    logger.info("ステータス更新開始: quote_id=%s, new_state=%s", quote_id, new_state)
-    conn = None
-    try:
-        conn = await asyncpg.connect(dsn=config.postgres["dsn"])
-        logger.debug("PostgreSQL接続成功")
+    logger.info("見積もり更新開始: quote_id=%s", quote_id)
 
-        row = await conn.fetchrow("SELECT user_id FROM quotes WHERE quote_id = $1", quote_id)
-        if not row:
-            logger.warning("見積もり未存在: quote_id=%s", quote_id)
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="見積もりが存在しません")
+    result = await session.execute(
+        select(Quote, QuoteDetail)
+        .join(QuoteDetail)
+        .where(Quote.quote_id == quote_id)
+    )
+    record = result.first()
+    if not record:
+        raise HTTPException(status_code=404, detail="見積もりが存在しません")
 
-        if str(row["user_id"]) != user_id:
-            logger.debug(f"quote_user_id: {row['user_id']}")
-            logger.debug(f"user_id: {user_id}")
-            logger.warning("認可エラー: 他人の見積もりに対する操作をブロック")
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="他人の見積もりは更新できません")
+    quote, detail = record
+    if quote.user_id != user_id:
+        raise HTTPException(status_code=403, detail="他人の見積もりは更新できません")
 
-        await conn.execute("""
-            UPDATE quotes
-            SET quote_state = $2
-            WHERE quote_id = $1
-        """, quote_id, new_state)
+    for k, v in updates.items():
+        if hasattr(detail, k):
+            setattr(detail, k, v)
 
-        logger.info("ステータス更新完了: quote_id=%s → %s", quote_id, new_state)
-        return await get_quote_by_id(quote_id)
+    #Commit
+    await session.commit()
+    scenarios = await _load_scenarios_by_quote_id(session, quote_id)
+    return _build_response_model(quote, detail, scenarios)
 
-    except Exception:
-        logger.exception("ステータス更新中にエラー")
-        raise
+# ------------------------------------------------------------------------------
+# 見積もり削除
+# ------------------------------------------------------------------------------
 
-    finally:
-        if conn:
-            await conn.close()
-            logger.debug("PostgreSQL接続クローズ")
+async def delete_quote(session: AsyncSession, quote_id: UUID, user_id: UUID):
+    """
+    見積もりを削除（子テーブルも CASCADE により削除）
+
+    Raises:
+        404: 存在しないquote_id
+        403: 他ユーザーによる削除
+    """
+    logger.info("見積もり削除: quote_id=%s", quote_id)
+
+    result = await session.execute(
+        select(Quote).where(Quote.quote_id == quote_id)
+    )
+    quote = result.scalar_one_or_none()
+    if not quote:
+        raise HTTPException(status_code=404, detail="見積もりが存在しません")
+    if quote.user_id != user_id:
+        raise HTTPException(status_code=403, detail="他人の見積もりは削除できません")
+
+    #データ削除
+    await session.delete(quote)
+    #Commit
+    await session.commit()
+    logger.info("見積もり削除完了: quote_id=%s", quote_id)
 
 
 # ------------------------------------------------------------------------------
-# 任意フィールドの更新処理（ステータス以外の用途にも対応）
+# 内部: シナリオ取得（複数）
 # ------------------------------------------------------------------------------
-async def update_quote(quote_id: str, user_id: str, updates: dict) -> PensionQuoteResponseModel:
-    """
-    指定された見積もりレコードの任意のフィールドを更新する（ステータス以外）
+async def _load_scenarios_map(session: AsyncSession, quote_ids: List[UUID]) -> dict:
+    result = await session.execute(
+        select(QuoteScenario).where(QuoteScenario.quote_id.in_(quote_ids))
+    )
+    scenarios = result.scalars().all()
 
-    Parameters:
-        quote_id (str): 見積もりID
-        user_id (str): 呼び出し元ユーザー（認可チェック用）
-        updates (dict): 更新対象のフィールド名と値の辞書
+    scenario_map = {}
+    for s in scenarios:
+        scenario_model = PensionQuoteScenarioModel.from_orm(s)
+        scenario_map.setdefault(s.quote_id, []).append(scenario_model)
+    return scenario_map
 
-    Returns:
-        PensionQuoteResponseModel: 更新後の見積もり
-    """
-    logger.info("見積もり更新処理開始: quote_id=%s, updates=%s", quote_id, updates)
 
-    allowed_fields = {
-        "monthly_premium", "payment_period_years", "tax_deduction_enabled",
-        "contract_date", "contract_interest_rate", "total_paid_amount",
-        "pension_start_age", "annual_tax_deduction", "scenario_data"
-    }
+# ------------------------------------------------------------------------------
+# 内部: シナリオ取得（単体）
+# ------------------------------------------------------------------------------
+async def _load_scenarios_by_quote_id(session: AsyncSession, quote_id: UUID) -> List[PensionQuoteScenarioModel]:
+    result = await session.execute(
+        select(QuoteScenario).where(QuoteScenario.quote_id == quote_id)
+    )
+    return [PensionQuoteScenarioModel.from_orm(s) for s in result.scalars().all()]
 
-    filtered_updates = {k: v for k, v in updates.items() if k in allowed_fields}
-    logger.debug("更新対象フィールド: %s", filtered_updates)
 
-    if not filtered_updates:
-        logger.warning("更新対象なし: 許可されたフィールドが含まれていません")
-        raise HTTPException(status_code=400, detail="更新可能な項目が含まれていません")
-
-    set_clause = ", ".join([f"{field} = ${i+2}" for i, field in enumerate(filtered_updates)])
-    values = list(filtered_updates.values())
-
-    conn = None
-    try:
-        conn = await asyncpg.connect(dsn=config.postgres["dsn"])
-        logger.debug("PostgreSQL接続成功")
-
-        row = await conn.fetchrow("SELECT user_id FROM quotes WHERE quote_id = $1", quote_id)
-        if not row:
-            logger.warning("見積もり未存在: quote_id=%s", quote_id)
-            raise HTTPException(status_code=404, detail="見積もりが存在しません")
-        if row["user_id"] != user_id:
-            logger.warning("認可エラー: 他人の見積もり")
-            raise HTTPException(status_code=403, detail="他人の見積もりは更新できません")
-
-        query = f"UPDATE quotes SET {set_clause} WHERE quote_id = $1"
-        logger.debug("生成されたクエリ: %s", query)
-        await conn.execute(query, quote_id, *values)
-
-        logger.info("見積もり更新完了: quote_id=%s", quote_id)
-        return await get_quote_by_id(quote_id)
-
-    except Exception:
-        logger.exception("見積もり更新中にエラー")
-        raise
-
-    finally:
-        if conn:
-            await conn.close()
-            logger.debug("PostgreSQL接続クローズ")
+# ------------------------------------------------------------------------------
+# 内部: レスポンスモデル組み立て
+# ------------------------------------------------------------------------------
+def _build_response_model(
+    quote: Quote,
+    detail: QuoteDetail,
+    scenarios: List[PensionQuoteScenarioModel]
+) -> PensionQuoteResponseModel:
+    return PensionQuoteResponseModel(
+        quote_id=quote.quote_id,
+        contract_date=detail.contract_date,
+        contract_interest_rate=detail.contract_interest_rate,
+        total_paid_amount=detail.total_paid_amount,
+        payment_period_years=detail.payment_period_years,
+        pension_start_age=detail.pension_start_age,
+        annual_tax_deduction=detail.annual_tax_deduction,
+        scenarios=scenarios,
+    )

@@ -2,18 +2,21 @@
 """
 個人年金保険の見積もりロジック
 
-- 保険契約日計算
-- 将来の受取金額や控除額のシミュレーション
-- MongoDBからの利率取得を伴う
+- 契約開始日の算出
+- 控除額・受取金額のシミュレーション
+- MongoDBから予定利率（標準・最低保証・高金利）を取得
+- レスポンス用スキーマ（PensionQuoteResponseModel）を構築して返却
+
+※ このモジュールは「見積もりの生成専用」であり、保存処理は行わない
 """
 
 # ------------------------------------------------------------------------------
 # インポート
 # ------------------------------------------------------------------------------
 import logging
-from datetime import datetime, timedelta
-from uuid import uuid4
-from typing import Dict
+from datetime import date, datetime, timedelta
+from uuid import uuid4, UUID
+from typing import Dict, List
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -25,57 +28,46 @@ from app.models.quotes import (
 from app.services.rate_loader import load_interest_rates
 
 # ------------------------------------------------------------------------------
-# 初期設定
+# ロガー初期化
 # ------------------------------------------------------------------------------
 logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------------------
 # 契約開始日ロジック
 # ------------------------------------------------------------------------------
-def get_contract_start_date(today: datetime) -> datetime:
+def get_contract_start_date(today: date) -> date:
     """
-    毎月1日始まりで契約日を算出（時刻を常に00:00:00に設定）
+    契約開始日を算出（毎月1日始まり、常に00:00）
 
     Parameters:
-        today (datetime): 現在日付
+        today (date): 今日の日付
 
     Returns:
-        datetime: 契約開始日（翌月1日）
+        date: 契約開始日（翌月1日 or 当月1日）
     """
     logger.debug("[契約日計算] 今日の日付: %s", today)
     if today.day == 1:
-        result = today.replace(hour=0, minute=0, second=0, microsecond=0)
-        logger.debug("[契約日確定] 本日が1日のためそのまま採用: %s", result)
-        return result
-    next_month = today.replace(day=1) + timedelta(days=32)
-    result = next_month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    logger.debug("[契約日確定] 翌月1日を採用: %s", result)
-    return result
+        return today
+    next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    logger.debug("[契約日確定] 翌月1日を採用: %s", next_month)
+    return next_month
 
 # ------------------------------------------------------------------------------
-# 受取年金や返戻金の計算
+# 金額・年金の計算ロジック
 # ------------------------------------------------------------------------------
 def calculate_benefits(monthly_premium: int, years: int, rate: float) -> Dict[str, float]:
     """
-    将来受け取り金額などを計算
-
-    Parameters:
-        monthly_premium (int): 月額保険料
-        years (int): 払込期間（年）
-        rate (float): 年利率（例: 0.01 = 1%）
+    将来受取金額や返戻金を計算
 
     Returns:
-        dict: 年金額、累計、返戻金など
+        dict: 累計・年金・一括受取・15年返戻額等
     """
-    logger.debug("[給付計算] 入力: 月額=%d, 年数=%d, 利率=%.4f", monthly_premium, years, rate)
+    logger.debug("[給付計算] 月額=%d, 年数=%d, 利率=%.2f", monthly_premium, years, rate)
     total_paid = monthly_premium * 12 * years
     lump_sum = int(total_paid * (1 + rate) ** years)
-    annual_pension = int(lump_sum // 10)  # 10年受取と仮定
+    annual_pension = lump_sum // 10
     refund_at_15 = int(total_paid * (1 + rate) ** min(years, 15))
     refund_rate = round(refund_at_15 / (monthly_premium * 12 * 15) * 100, 2)
-
-    logger.debug("[給付計算結果] total_paid=%d, lump_sum=%d, annual_pension=%d, refund_at_15=%d, refund_rate=%.2f%%",
-                 total_paid, lump_sum, annual_pension, refund_at_15, refund_rate)
 
     return {
         "rate": rate,
@@ -87,7 +79,7 @@ def calculate_benefits(monthly_premium: int, years: int, rate: float) -> Dict[st
     }
 
 # ------------------------------------------------------------------------------
-# シナリオ構築処理
+# シナリオ構築
 # ------------------------------------------------------------------------------
 def build_scenario(
     scenario_name: str,
@@ -96,38 +88,22 @@ def build_scenario(
     payment_years: int
 ) -> PensionQuoteScenarioModel:
     """
-    各利率パターン（シナリオ）の見積もりを構築
-
-    Parameters:
-        scenario_name (str): シナリオ名
-        rate (float): 利率（%表記）
-        monthly_premium (int): 月額保険料
-        payment_years (int): 支払い期間（年）
+    利率シナリオを構築してモデル化
 
     Returns:
-        PensionQuoteScenarioModel: シナリオ見積もりモデル
+        PensionQuoteScenarioModel
     """
-    logger.debug("[シナリオ構築] %s: 利率=%.2f%%, 保険料=%d, 年数=%d", scenario_name, rate, monthly_premium, payment_years)
-    total_paid = monthly_premium * 12 * payment_years
-    total_refund_amount = round(total_paid * (1 + rate / 100))
-    annual_annuity = round(total_refund_amount / 10)  # 例：10年分割支給
-    lump_sum_amount = total_refund_amount
-    refund_on_15_years = round(monthly_premium * 12 * 15 * (1 + rate / 100))
-    refund_rate_on_15_years = round(
-        refund_on_15_years / (monthly_premium * 12 * 15) * 100, 1
-    )
-
-    logger.debug("[シナリオ結果] %s: refund=%d, annuity=%d, refund15=%d, rate15=%.1f%%",
-                 scenario_name, total_refund_amount, annual_annuity, refund_on_15_years, refund_rate_on_15_years)
+    logger.debug("[シナリオ構築] %s: rate=%.2f%%", scenario_name, rate)
+    benefits = calculate_benefits(monthly_premium, payment_years, rate / 100)
 
     return PensionQuoteScenarioModel(
         scenario_name=scenario_name,
         assumed_interest_rate=rate,
-        total_refund_amount=total_refund_amount,
-        annual_annuity=annual_annuity,
-        lump_sum_amount=lump_sum_amount,
-        refund_on_15_years=refund_on_15_years,
-        refund_rate_on_15_years=refund_rate_on_15_years
+        total_refund_amount=benefits["lump_sum"],
+        annual_annuity=benefits["annual_pension"],
+        lump_sum_amount=benefits["lump_sum"],
+        refund_on_15_years=benefits["refund_at_15"],
+        refund_rate_on_15_years=benefits["refund_rate"]
     )
 
 # ------------------------------------------------------------------------------
@@ -135,78 +111,47 @@ def build_scenario(
 # ------------------------------------------------------------------------------
 async def calculate_quote(
     request: PensionQuoteRequestModel,
-    mongo_client: AsyncIOMotorClient,
-    user_id: str
+    mongo_client: AsyncIOMotorClient
 ) -> PensionQuoteResponseModel:
     """
-    個人年金保険の見積もりシミュレーションを行う
+    個人年金保険の見積もりシミュレーションを実行
 
     Parameters:
-        request (PensionQuoteRequestModel): ユーザー入力情報
-        mongo_client (AsyncIOMotorClient): MongoDBクライアント
+        request: ユーザー入力（Pydanticモデル）
+        mongo_client: MongoDBクライアント
 
     Returns:
-        PensionQuoteResponseModel: 見積もり結果
+        PensionQuoteResponseModel
     """
-    logger.info("[見積もり開始] user_id=%s 入力=%s", user_id, request.json())
+    logger.info("[見積もり開始] 入力: %s", request.json())
 
-    # 契約開始日を計算
-    contract_date = get_contract_start_date(datetime.today())
-    logger.info("[契約日決定] %s", contract_date)
+    # 契約開始日（毎月1日始まり）
+    today = date.today()
+    contract_date = get_contract_start_date(today)
 
-    # 利率情報をMongoDBから取得
+    # 利率情報をMongoDBから取得（標準、最低保証、高金利）
     rates = await load_interest_rates(mongo_client, contract_date)
-    logger.info("[利率取得成功] contract_rate=%.2f%%, min_rate=%.2f%%, high_rate=%.2f%%",
+    logger.info("[利率取得] contract=%.2f, min=%.2f, high=%.2f",
                 rates["contract_rate"], rates["min_rate"], rates["high_rate"])
 
-    # 総支払額、年金開始年齢、控除額などの算出
+    # 支払総額・年金開始年齢
     total_paid_amount = request.monthly_premium * 12 * request.payment_period_years
-    logger.debug("[支払額算出] 月額=%d × 12 × 年数=%d → %d",
-                 request.monthly_premium, request.payment_period_years, total_paid_amount)
-
     pension_start_age = contract_date.year - request.birth_date.year
-
-    # birth_dateをdatetime.dateに変換（必要であれば）
-    if hasattr(request.birth_date, "date"):
-        birth_date_for_compare = request.birth_date.replace(year=contract_date.year).date()
-    else:
-        birth_date_for_compare = request.birth_date.replace(year=contract_date.year)
-
-    if contract_date.date() < birth_date_for_compare:
+    if contract_date < request.birth_date.replace(year=contract_date.year):
         pension_start_age -= 1
-        logger.debug("[年齢調整] 契約日が誕生日前のため年齢-1")
 
-    logger.debug("[年金開始年齢] %d", pension_start_age)
+    annual_tax_deduction = 40000  # 現状は仮設定
 
-    annual_tax_deduction = 40000  # 仮の年間控除額
-    logger.debug("[控除額仮設定] 年間控除: %d", annual_tax_deduction)
-
-    # 複数シナリオを構築（標準、最低保証、高金利）
-    scenarios = [
-        build_scenario(
-            "標準",
-            rates["contract_rate"],
-            request.monthly_premium,
-            request.payment_period_years
-        ),
-        build_scenario(
-            "最低保証",
-            rates["min_rate"],
-            request.monthly_premium,
-            request.payment_period_years
-        ),
-        build_scenario(
-            "高金利",
-            rates["high_rate"],
-            request.monthly_premium,
-            request.payment_period_years
-        )
+    # 利率シナリオの構築
+    scenarios: List[PensionQuoteScenarioModel] = [
+        build_scenario("標準", rates["contract_rate"], request.monthly_premium, request.payment_period_years),
+        build_scenario("最低保証", rates["min_rate"], request.monthly_premium, request.payment_period_years),
+        build_scenario("高金利", rates["high_rate"], request.monthly_premium, request.payment_period_years)
     ]
 
-    # 見積もりレスポンス構築
+    # レスポンスモデル構築（user_idは含めない）
     response = PensionQuoteResponseModel(
-        quote_id=str(uuid4()),
-        user_id=user_id,
+        quote_id=uuid4(),
         contract_date=contract_date,
         contract_interest_rate=rates["contract_rate"],
         total_paid_amount=total_paid_amount,

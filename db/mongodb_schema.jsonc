@@ -1,0 +1,55 @@
+
+// ============================================================================
+// MongoDB Collection: quote_scenarios
+// 概要: 見積もりに紐づく複数シナリオ（利率・返戻額など）の格納
+// ============================================================================
+{
+    "_id": ObjectId,
+    "quote_id": "UUID",                              // 見積もりID（PostgreSQLと連携）
+    "scenario_type": "base" | "high" | "low",        // シナリオ種別（ベース/高金利/低金利）
+    "interest_rate": NumberDecimal("1.25"),          // 利率
+    "estimated_pension": NumberInt(5800000),         // 想定年金額
+    "refund_rate": NumberDecimal("103.2"),           // 返戻率
+    "note": "高金利シナリオ",                        // 補足メモ
+    "created_at": ISODate("2025-07-01T00:00:00Z")    // 作成日時
+  }
+  
+  // ============================================================================
+  // MongoDB Collection: quote_status_history
+  // 概要: 見積もりの状態遷移履歴を記録
+  // ============================================================================
+  {
+    "_id": ObjectId,
+    "quote_id": "UUID",                              // 対象の見積もりID
+    "from_state": "draft",                           // 遷移前ステータス
+    "to_state": "confirmed",                         // 遷移後ステータス
+    "changed_at": ISODate("2025-07-01T12:34:56Z"),   // ステータス変更日時
+    "changed_by": "UUID"                             // 操作主体（ユーザー or 管理者ID）
+  }
+  
+  // ============================================================================
+  // MongoDB Collection: application_status_history
+  // 概要: 申込の状態遷移履歴を記録
+  // ============================================================================
+  {
+    "_id": ObjectId,
+    "application_id": "UUID",                        // 対象の申込ID
+    "from_status": "pending",                        // 遷移前ステータス
+    "to_status": "under_review",                     // 遷移後ステータス
+    "changed_at": ISODate("2025-07-01T13:45:00Z"),   // ステータス変更日時
+    "changed_by": "UUID"                             // 操作主体
+  }
+  
+  // ============================================================================
+  // MongoDB Collection: contract_status_history
+  // 概要: 契約の状態遷移履歴を記録
+  // ============================================================================
+  {
+    "_id": ObjectId,
+    "contract_id": "UUID",                           // 対象の契約ID
+    "from_status": "active",                         // 遷移前ステータス
+    "to_status": "cancelled",                        // 遷移後ステータス
+    "changed_at": ISODate("2027-01-01T00:00:00Z"),   // ステータス変更日時
+    "changed_by": "UUID"                             // 操作主体
+  }
+  
