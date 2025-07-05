@@ -10,7 +10,7 @@ PostgreSQLとの非同期接続およびセッション管理
 # ------------------------------------------------------------------------------
 # インポート
 # ------------------------------------------------------------------------------
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncAttrs,AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 
 from app.config.config import Config
@@ -40,11 +40,6 @@ AsyncSessionLocal = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
 )
-
-# ------------------------------------------------------------------------------
-# Declarative Base（全ORMモデルが継承する基底クラス）
-# ------------------------------------------------------------------------------
-Base = declarative_base()
 
 # ------------------------------------------------------------------------------
 # FastAPIのDepends()対応：非同期セッションを提供する関数

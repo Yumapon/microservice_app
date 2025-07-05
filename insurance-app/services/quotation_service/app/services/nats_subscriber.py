@@ -6,9 +6,6 @@ NATSイベント購読モジュール（quotation_service）
 - 対象の quote_id に対応する quote_state を適切に更新する
 """
 
-# ------------------------------------------------------------------------------
-# インポート
-# ------------------------------------------------------------------------------
 import json
 import logging
 from nats.aio.client import Client as NATS
@@ -49,6 +46,11 @@ async def run_nats_subscriber():
         # メッセージハンドラをトピックにバインド（applications.*）
         await nc.subscribe("applications.*", cb=message_handler)
         logger.info("NATS購読開始: トピック = applications.*")
+
+        # メッセージハンドラをトピックにバインド（contracts.*）
+        await nc.subscribe("contracts.*", cb=message_handler)
+        logger.info("NATS購読開始: トピック = contracts.*")
+
     except Exception as e:
         logger.exception("[NATS] サブスクライバ初期化中にエラーが発生しました")
 

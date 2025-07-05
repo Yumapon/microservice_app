@@ -1,11 +1,12 @@
 postgres:
-  dsn: "postgresql://appuser:password@localhost:5432/insurance_db"
-  echo: True
+  dsn: "postgresql+asyncpg://appuser:password@localhost:5432/insurance_db"
+  echo: False
 
 mongodb:
-  dsn: "mongodb://localhost:27017/rate_db"
-  database: "rate_db"
+  dsn: "mongodb://localhost:27017/quote_db"
+  database: "quote_db"
   collection: "interest_rates"
+  scenario_collection: "quote_scenarios"
 
 nats:
   address: "nats://localhost:4222"
@@ -23,3 +24,4 @@ pension:
   max_age: 70
   min_payment_years: 15
   max_annual_tax_deduction: 40000
+  plan_code: "PENSION_001"

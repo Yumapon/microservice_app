@@ -1,13 +1,26 @@
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
-asyncpg
+
+# DB & ORM
+sqlalchemy==2.0.30
+asyncpg==0.29.0
+greenlet==3.0.3
+alembic==1.13.1
+
+# モデル・検証
 pydantic==2.7.1
-PyJWT==2.8.0
 python-dotenv==1.0.1
-motor==3.7.1
-python-jose
+PyJWT==2.8.0
 python-jose[cryptography]==3.3.0
 cryptography==42.0.5
-nats-py
-alembic
-sqlalchemy
+
+# MongoDB
+motor==3.7.1
+
+# NATS
+nats-py==2.6.0
+
+# テスト
+pytest==8.2.2
+pytest-mock==3.14.0
+pytest-asyncio==0.23.6

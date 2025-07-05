@@ -136,8 +136,9 @@ paths:
     post:
       tags:
         - Quotation
-      summary: 個人年金保険の見積もり取得
-      description: ユーザーが入力した条件に基づいて、見積もり結果を返却します。
+      summary: 個人年金保険の見積もり作成
+      description: ユーザーが指定した条件に基づき、MongoDBとPostgreSQLに保存し、見積もりを新規作成します。
+      operationId: createPensionQuote
       security:
         - bearerAuth: []
       requestBody:
@@ -147,61 +148,29 @@ paths:
             schema:
               $ref: "#/components/schemas/PensionQuoteRequestModel"
             example:
-              value:
-                birth_date: "1990-01-01"
-                gender: "男"
-                monthly_premium: 20000
-                payment_period_years: 20
-                tax_deduction_enabled: true
+              birth_date: "1990-01-01"
+              gender: "male"
+              monthly_premium: 20000
+              payment_period_years: 20
+              pension_payment_years: 10
+              tax_deduction_enabled: true
       responses:
         "200":
-          description: 見積もり結果の返却
+          description: 見積もり作成成功
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PensionQuoteResponseModel"
-              example:
-                value:
-                  quote_id: "0d853368-4bdf-49cf-bfcd-b1fc313dabdc"
-                  contract_date: "2025-07-01"
-                  contract_interest_rate: 1.2
-                  total_paid_amount: 9000000
-                  payment_period_years: 30
-                  pension_start_age: 28
-                  annual_tax_deduction: 40000
-                  scenarios:
-                    - scenario_name: "標準"
-                      assumed_interest_rate: 1.2
-                      total_refund_amount: 9108000
-                      annual_annuity: 910800
-                      lump_sum_amount: 9108000
-                      refund_on_15_years: 4554000
-                      refund_rate_on_15_years: 101.2
-                    - scenario_name: "最低保証"
-                      assumed_interest_rate: 0.5
-                      total_refund_amount: 9045000
-                      annual_annuity: 904500
-                      lump_sum_amount: 9045000
-                      refund_on_15_years: 4522500
-                      refund_rate_on_15_years: 100.5
-                    - scenario_name: "高金利"
-                      assumed_interest_rate: 1.5
-                      total_refund_amount: 9135000
-                      annual_annuity: 913500
-                      lump_sum_amount: 9135000
-                      refund_on_15_years: 4567500
-                      refund_rate_on_15_years: 101.5
-        "400":
-          description: リクエスト形式不正または計算不可
         "401":
-          description: 認証失敗（アクセストークン無効）
+          description: 認証エラー
 
   /api/v1/my/quotes:
     get:
       tags:
         - Quotation
       summary: ログインユーザーの見積もり一覧取得
-      description: ログイン中のユーザーに紐づく個人年金保険の見積もりデータ一覧を返却します。
+      description: PostgreSQLとMongoDBを統合して、ログイン中のユーザーが作成した全見積もりを返します。
+      operationId: getMyQuotes
       security:
         - bearerAuth: []
       responses:
@@ -214,26 +183,23 @@ paths:
                 items:
                   $ref: '#/components/schemas/PensionQuoteResponseModel'
         '401':
-          description: 認証失敗（アクセストークン不正）
-        '500':
-          description: サーバ内部エラー
+          description: 認証失敗
 
   /api/v1/my/quotes/{quote_id}:
     get:
       tags:
         - Quotation
-      summary: ログインユーザーの特定見積もり取得
-      description: ログインユーザーが過去に作成した特定の見積もりを取得します。
+      summary: ログインユーザーの個別見積もり取得
+      description: MongoDBのシナリオ情報も含めた、指定見積もりIDに対応する完全データを返します。
+      operationId: getMyQuoteById
       security:
         - bearerAuth: []
       parameters:
         - name: quote_id
           in: path
           required: true
-          description: 見積もりID（UUID）
           schema:
             type: string
-            format: uuid
       responses:
         '200':
           description: 見積もりデータの返却
@@ -241,54 +207,93 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PensionQuoteResponseModel'
-        '401':
-          description: 認証失敗
-        '403':
-          description: 他人の見積もりを参照しようとした場合
         '404':
           description: 見積もりが存在しない
-        '500':
-          description: サーバ内部エラー
 
-    put:
+    patch:
       tags:
         - Quotation
-      summary: ログインユーザーの見積もり状態を更新
-      description: 指定した見積もりを「申込済み（applied）」などに状態変更します。
+      summary: ログインユーザーの見積もり情報を部分更新
+      description: confirmed状態の見積もりに対し、条件を一部変更し再見積もり・再保存を行います。
+      operationId: patchMyQuote
       security:
         - bearerAuth: []
       parameters:
         - name: quote_id
           in: path
           required: true
-          description: 見積もりID（UUID）
           schema:
             type: string
-            format: uuid
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/QuoteStateUpdateModel'
-            example:
-              value:
-                new_state: "applied"
+              $ref: '#/components/schemas/PartialQuoteUpdateModel'
       responses:
         '200':
-          description: 状態更新後の見積もりデータ
+          description: 更新後の見積もりデータ
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/PensionQuoteResponseModel'
-        '401':
-          description: 認証失敗
-        '403':
-          description: 他人の見積もりを更新しようとした場合
+        '400':
+          description: 更新不可（条件不備・不正なステータス）
+
+    delete:
+      tags:
+        - Quotation
+      summary: ログインユーザーの見積もり削除（cancelledへ）
+      description: confirmed/applied状態の見積もりをcancelledへステータス変更します。
+      operationId: cancelMyQuote
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: quote_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ステータス変更結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteStateUpdateModel'
+
+  /api/v1/my/quotes/{quote_id}/changestate:
+    put:
+      tags:
+        - Quotation
+      summary: ログインユーザーの見積もりステータス変更
+      description: 状態遷移ルールに基づいて、ステータス（例 confirmed→appliedなど）を変更します。
+      operationId: changeMyQuoteState
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: quote_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteStateUpdateRequest'
+      responses:
+        '200':
+          description: ステータス更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteStateUpdateModel'
+        '400':
+          description: 不正な状態遷移
         '404':
-          description: 見積もりが存在しない
-        '500':
-          description: サーバ内部エラー
+          description: 対象見積もりが存在しない
 
   /api/v1/applications:
     post:
@@ -676,16 +681,6 @@ components:
         - refund_on_15_years
         - refund_rate_on_15_years
 
-    QuoteStateUpdateModel:
-      type: object
-      properties:
-        new_state:
-          type: string
-          enum: ["none", "applied", "reverted", "cancelled"]
-          description: 更新後のステータス（quote_state）
-      required:
-        - new_state
-
     ApplicationRequestModel:
       type: object
       properties:
@@ -934,3 +929,56 @@ components:
           format: date-time
           nullable: true
           description: キャンセル日時（キャンセルされていない場合はnull）
+
+    QuoteStateUpdateRequest:
+      type: object
+      properties:
+        new_state:
+          type: string
+          enum: [confirmed, applied, cancelled, expired]
+          description: 更新後の見積もりステータス
+      required:
+        - new_state
+
+    QuoteStateUpdateModel:
+      type: object
+      properties:
+        quote_id:
+          type: string
+          description: 見積もりID
+        from_state:
+          type: string
+          description: 変更前の状態
+        to_state:
+          type: string
+          description: 変更後の状態
+      required:
+        - quote_id
+        - from_state
+        - to_state
+
+    PartialQuoteUpdateModel:
+      type: object
+      description: 見積もり部分更新用の入力モデル
+      properties:
+        birth_date:
+          type: string
+          format: date
+        gender:
+          type: string
+          enum: [male, female]
+        monthly_premium:
+          type: integer
+          minimum: 10000
+          maximum: 50000
+          multipleOf: 1000
+        payment_period_years:
+          type: integer
+          minimum: 15
+          maximum: 45
+        pension_payment_years:
+          type: integer
+          minimum: 5
+          maximum: 30
+        tax_deduction_enabled:
+          type: boolean

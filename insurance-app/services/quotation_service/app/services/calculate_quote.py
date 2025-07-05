@@ -11,15 +11,15 @@
 import logging
 from datetime import date, timedelta
 from uuid import uuid4, UUID
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from fastapi import HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.models.quotes import (
     PensionQuoteRequestModel,
-    PensionQuoteResponseModel,
-    PensionQuoteScenarioModel
+    PensionQuoteScenarioModel,
+    PensionQuoteCalculateResult
 )
 from app.services.rate_loader import load_interest_rates
 from app.config.config import Config
@@ -28,7 +28,7 @@ from app.config.config import Config
 # 設定・ロガー初期化
 # ------------------------------------------------------------------------------
 config = Config()
-rules = config.insurance
+rules = config.pension
 logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------------------
@@ -38,6 +38,7 @@ MIN_AGE = rules.get("min_age", 20)
 MAX_AGE = rules.get("max_age", 70)
 MIN_PAYMENT_YEARS = rules.get("min_payment_years", 15)
 MAX_ANNUAL_TAX_DEDUCTION = rules.get("max_annual_tax_deduction", 40000)
+PLAN_CODE = rules.get("plan_code", "PENSION_001")
 
 # ------------------------------------------------------------------------------
 # 契約開始日算出ロジック
@@ -60,55 +61,104 @@ def get_contract_start_date(today: date) -> date:
     return next_month
 
 # ------------------------------------------------------------------------------
-# 金額・給付シミュレーション
+# 金額・給付シミュレーションロジック
 # ------------------------------------------------------------------------------
-def calculate_benefits(monthly_premium: int, years: int, rate: float, pension_duration_years: int) -> Dict[str, float]:
+def calculate_benefits(
+    monthly_premium: int,
+    payment_years: int,
+    pension_years: int,
+    contract_rate: float,
+    annuity_conversion_rate: float,
+    surrender_rates: Dict[int, float]
+) -> Dict[str, float]:
     """
-    将来受取金額や返戻金をシミュレート
+    利率ごとに金額・給付シミュレーションを行う（実務対応版）
+
+    Parameters:
+        monthly_premium: 月額保険料
+        payment_years: 払込年数
+        pension_years: 年金受取年数
+        contract_rate: 積立期間中の予定利率（%）
+        annuity_conversion_rate: 年金移行時の利率（%）
+        surrender_rates: {経過年数: 返戻率} の辞書（例: {15: 0.85}）
 
     Returns:
-        dict: 金額シミュレーション結果
+        dict: 結果（年金累計額、返戻金、返戻率など）
     """
-    total_paid = monthly_premium * 12 * years
-    lump_sum = int(total_paid * (1 + rate) ** years)
-    annual_pension = lump_sum // pension_duration_years
-    refund_at_15 = int(total_paid * (1 + rate) ** min(years, 15))
-    refund_rate = round(refund_at_15 / (monthly_premium * 12 * 15) * 100, 2)
+
+    # 総払込額
+    total_paid = monthly_premium * 12 * payment_years
+
+    # 将来一括受取額（積立利率での複利）
+    lump_sum = int(total_paid * (1 + contract_rate / 100) ** payment_years)
+
+    # 年金年額（年金移行利率を考慮）
+    annual_pension = int(lump_sum * (annuity_conversion_rate / 100) / pension_years)
+
+    # 年金累計額（年金 × 年数）
+    estimated_pension = annual_pension * pension_years
+
+    # 年金累計額の返戻率（対総払込額）
+    pension_refund_rate = round(estimated_pension / total_paid * 100, 2)
+
+    # 一括受取時の返戻率
+    lump_sum_refund_rate = round(lump_sum / total_paid * 100, 2)
+
+    # 15年時点の解約返戻金（テーブルを参照）
+    surrender_rate_15 = surrender_rates.get(15, 0.0)
+    refund_at_15 = int(monthly_premium * 12 * 15 * surrender_rate_15)
+    refund_rate_15 = round(surrender_rate_15 * 100, 2)
 
     return {
-        "rate": rate,
         "total_paid": total_paid,
+        "lump_sum_amount": lump_sum,
         "annual_pension": annual_pension,
-        "lump_sum": lump_sum,
-        "refund_at_15": refund_at_15,
-        "refund_rate": refund_rate
+        "estimated_pension": estimated_pension,
+        "pension_refund_rate": pension_refund_rate,
+        "lump_sum_refund_rate": lump_sum_refund_rate,
+        "refund_on_15_years": refund_at_15,
+        "refund_rate": refund_rate_15
     }
 
 # ------------------------------------------------------------------------------
 # シナリオ構築（各利率パターン）
 # ------------------------------------------------------------------------------
-def build_scenario(
+from uuid import UUID
+from datetime import datetime
+from app.models.quotes import PensionQuoteScenarioModel
+
+def build_scenario_model(
     quote_id: UUID,
     scenario_type: str,
-    rate: float,
-    monthly_premium: int,
-    payment_years: int
+    interest_rate: float,
+    benefits: Dict[str, float]
 ) -> PensionQuoteScenarioModel:
     """
-    シナリオモデルを生成
+    PensionQuoteScenarioModel を構築するユーティリティ関数
+
+    Parameters:
+        quote_id: 見積もりID
+        scenario_type: シナリオ種別（"base", "low", "high"）
+        interest_rate: 利率（%）
+        benefits: calculate_benefits() の出力辞書
 
     Returns:
         PensionQuoteScenarioModel
     """
-    benefits = calculate_benefits(monthly_premium, payment_years, rate / 100)
     return PensionQuoteScenarioModel(
-        scenario_name=scenario_name,
-        assumed_interest_rate=rate,
-        total_refund_amount=benefits["lump_sum"],
-        annual_annuity=benefits["annual_pension"],
-        lump_sum_amount=benefits["lump_sum"],
-        refund_on_15_years=benefits["refund_at_15"],
-        refund_rate_on_15_years=benefits["refund_rate"]
+        quote_id=quote_id,
+        scenario_type=scenario_type,
+        interest_rate=interest_rate,
+        estimated_pension=int(benefits["estimated_pension"]),
+        pension_refund_rate=round(benefits["pension_refund_rate"], 2),
+        annual_pension=int(benefits["annual_pension"]),
+        lump_sum_amount=int(benefits["lump_sum_amount"]),
+        lump_sum_refund_rate=round(benefits["lump_sum_refund_rate"], 2),
+        refund_on_15_years=int(benefits["refund_on_15_years"]),
+        refund_rate=round(benefits["refund_rate"], 2),
+        note=None,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
     )
 
 # ------------------------------------------------------------------------------
@@ -116,8 +166,9 @@ def build_scenario(
 # ------------------------------------------------------------------------------
 async def calculate_quote(
     request: PensionQuoteRequestModel,
-    mongo_client: AsyncIOMotorClient
-) -> PensionQuoteResponseModel:
+    mongo_client: AsyncIOMotorClient,
+    quote_id: Optional[UUID] = None
+) -> PensionQuoteCalculateResult:
     """
     個人年金保険の見積もりを生成（MongoDBの予定利率を使用）
 
@@ -126,13 +177,13 @@ async def calculate_quote(
         mongo_client: MongoDBクライアント
 
     Returns:
-        PensionQuoteResponseModel
+        PensionQuoteCalculateResult
     """
     logger.info("[見積もり開始] 入力: %s", request.json())
 
-    # ─────────────────────────────────────
-    # Step 1: 契約開始日と年齢を算出
-    # ─────────────────────────────────────
+    # ────────────────────────────────
+    # Step 1: 契約日・契約年齢の算出
+    # ────────────────────────────────
     today = date.today()
     contract_date = get_contract_start_date(today)
     birth_date = request.birth_date
@@ -143,53 +194,76 @@ async def calculate_quote(
 
     logger.debug("[年金開始年齢] %d歳", pension_start_age)
 
-    # 年齢制限チェック
-    if pension_start_age < CONTRACT_MIN_AGE or pension_start_age > CONTRACT_MAX_AGE:
+    if pension_start_age < MIN_AGE or pension_start_age > MAX_AGE:
         logger.warning("[契約年齢エラー] %d歳", pension_start_age)
-        raise HTTPException(status_code=400, detail=f"契約年齢は{CONTRACT_MIN_AGE}〜{CONTRACT_MAX_AGE}歳の範囲です")
+        raise HTTPException(status_code=400, detail=f"契約年齢は{MIN_AGE}〜{MAX_AGE}歳の範囲です")
 
-    # 払込期間チェック
     if request.payment_period_years < MIN_PAYMENT_YEARS:
         raise HTTPException(status_code=400, detail=f"払込期間は最低{MIN_PAYMENT_YEARS}年以上必要です")
 
-    # ─────────────────────────────────────
-    # Step 2: MongoDBから利率情報を取得
-    # ─────────────────────────────────────
+    # ────────────────────────────────
+    # Step 2: MongoDBから利率情報取得
+    # ────────────────────────────────
     try:
-        rates = await load_interest_rates(mongo_client, contract_date)
-    except Exception as e:
+        rates = await load_interest_rates(
+            db=mongo_client, 
+            plan_code=PLAN_CODE,
+            contract_date=contract_date
+        )
+    except Exception:
         logger.exception("[利率取得失敗] MongoDBエラー")
         raise HTTPException(status_code=503, detail="利率情報の取得に失敗しました")
 
-    logger.info("[利率取得] 標準=%.2f, 最低=%.2f, 高金利=%.2f",
+    logger.info("[利率取得] base=%.2f, low=%.2f, high=%.2f",
                 rates["contract_rate"], rates["min_rate"], rates["high_rate"])
 
-    # 利率異常チェック（業務ルール上の上限などあればここで対応）
+    # ────────────────────────────────
+    # Step 3: 各シナリオの生成（3パターン）
+    # ────────────────────────────────
+    if quote_id is None:
+        quote_id = uuid4()  # 新規発行用のID
+        logger.info(f"[見積もりID発行]quote_id: {quote_id}")
+    else:
+        logger.info(f"[calculate_quote] 既存quote_idを再利用: {quote_id}")
+    pension_years = request.pension_payment_years or 10  # 初期値10年
 
-    # ─────────────────────────────────────
-    # Step 3: 各シナリオの構築
-    # ─────────────────────────────────────
-    scenarios: List[PensionQuoteScenarioModel] = [
-        build_scenario("標準", rates["contract_rate"], request.monthly_premium, request.payment_period_years),
-        build_scenario("最低保証", rates["min_rate"], request.monthly_premium, request.payment_period_years),
-        build_scenario("高金利", rates["high_rate"], request.monthly_premium, request.payment_period_years)
-    ]
+    scenarios: List[PensionQuoteScenarioModel] = []
 
-    # ─────────────────────────────────────
-    # Step 4: レスポンス構築（保存は外部ロジックに委譲）
-    # ─────────────────────────────────────
+    for scenario_type, rate_key in [("base", "contract_rate"), ("low", "min_rate"), ("high", "high_rate")]:
+        rate = rates[rate_key]
+
+        benefits = calculate_benefits(
+            monthly_premium=request.monthly_premium,
+            payment_years=request.payment_period_years,
+            pension_years=pension_years,
+            contract_rate=rate,
+            annuity_conversion_rate=rates["annuity_conversion_rate"],
+            surrender_rates=rates["surrender_rates"]
+        )
+
+        scenario_model = build_scenario_model(
+            quote_id=quote_id,
+            scenario_type=scenario_type,
+            interest_rate=rate,
+            benefits=benefits
+        )
+
+        scenarios.append(scenario_model)
+
+    # ────────────────────────────────
+    # Step 4: レスポンス構築
+    # ────────────────────────────────
     total_paid_amount = request.monthly_premium * 12 * request.payment_period_years
 
-    response = PensionQuoteResponseModel(
-        quote_id=uuid4(),
+    response = PensionQuoteCalculateResult(
+        quote_id=quote_id,
         contract_date=contract_date,
         contract_interest_rate=rates["contract_rate"],
         total_paid_amount=total_paid_amount,
-        payment_period_years=request.payment_period_years,
         pension_start_age=pension_start_age,
         annual_tax_deduction=MAX_ANNUAL_TAX_DEDUCTION,
         scenarios=scenarios
     )
 
-    logger.info("[見積もり完了] quote_id=%s", response.quote_id)
+    logger.info("[見積もり完了] quote_id=%s", quote_id)
     return response

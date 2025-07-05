@@ -10,6 +10,9 @@ quotes {
     UUID user_id
     VARCHAR quote_state
     TIMESTAMP created_at
+    TIMESTAMP update_at
+    UUID created_by
+    UUID updated_by
 }
 
 quote_details {
@@ -19,11 +22,13 @@ quote_details {
     INTEGER monthly_premium
     INTEGER payment_period_years
     BOOLEAN tax_deduction_enabled
+    INTEGER pension_payment_years
     DATE contract_date
     NUMERIC contract_interest_rate
     INTEGER total_paid_amount
     INTEGER pension_start_age
     INTEGER annual_tax_deduction
+    TEXT plan_code
 }
 
 applications {
