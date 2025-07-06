@@ -7,10 +7,10 @@ quotes, quote_details, quote_scenarios テーブルと連携するサービス�
 - ステータス更新
 """
 
+from datetime import datetime
 import logging
 from typing import List
 from uuid import UUID
-import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 ####参照処理
 
 # ------------------------------------------------------------------------------
-# 見積もり一覧取得（ユーザー単位、Mongoなし）
+# 見積もり一覧取得（ユーザー単位、シナリオなし）
 # ------------------------------------------------------------------------------
 async def get_quotes_by_user_id(
     session: AsyncSession,
@@ -99,6 +99,7 @@ async def get_quote_by_id(
     logger.info(f"quote{quote}")
     response = _build_response_model(quote, detail, scenarios=[])
     return response
+
 # ------------------------------------------------------------------------------
 # 見積もりシナリオ一覧取得（見積もりID単位）
 # ------------------------------------------------------------------------------

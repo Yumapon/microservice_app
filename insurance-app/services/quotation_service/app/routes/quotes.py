@@ -53,11 +53,12 @@ async def post_pension_quote(
     session: AsyncSession = Depends(get_async_session),
 ):
     user_id = token_payload.get("sub")
+    
+    logger.info(f"[API] POST /quotes/pension called (user_id={user_id})")
+
     if not user_id:
         logger.warning("アクセストークンにsubが含まれていません")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token: no user ID")
-
-    logger.info(f"[API] POST /quotes/pension called (user_id={user_id})")
 
     #見積もりを作成
     calculated_result = await calculate_quote(request_model, mongo_client)
@@ -76,11 +77,11 @@ async def post_pension_quote(
         await save_scenarios_to_mongo(
             mongo_client=mongo_client,
             quote_id=str(quote_id),
-            user_id=user_id,
             scenarios=calculated_result.scenarios
         )
     except Exception as e:
         logger.error("MongoDBシナリオ保存失敗: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to save scenario")
 
     #イベントを発火
     event = QuoteCreatedEvent(
@@ -118,11 +119,10 @@ async def update_quote_state(
     token_payload: dict = Depends(require_quote_write_permission),
 ):
     user_id = token_payload.get("sub")
+    logger.info(f"[API] PUT /my/quotes/{quote_id}/changestate 状態変更 (new_state={payload.new_state})")
     if not user_id:
         logger.warning("アクセストークンにsubが含まれていません")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token: no user ID")
-
-    logger.info(f"[API] PUT /my/quotes/{quote_id} 状態変更 (new_state={payload.new_state})")
 
     #変更前の状態を取得
     quote = await get_quote_by_id(session, quote_id, user_id)
@@ -396,13 +396,10 @@ async def get_my_quote_by_id(
         logger.warning("アクセストークンにsubが含まれていません")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token: no user ID")
 
-    quote_id_uuid = UUID(quote_id)  # UUIDに変換
-    quote = await get_quote_by_id(session, quote_id_uuid, user_id)
+    quote = await get_quote_by_id(session, quote_id, user_id)
 
     # MongoDBからシナリオを取得
     scenarios = await get_scenarios_by_quote_id(mongo_client, quote_id)
-
-    # quote に scenarios をマージして返却
     quote.scenarios = scenarios
 
     return quote

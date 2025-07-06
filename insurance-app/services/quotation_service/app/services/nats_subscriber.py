@@ -12,10 +12,13 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 
 from app.models.events import (
-    ApplicationConfirmedEvent,
-    ApplicationCancelledEvent
+    ApplicationCreatedEvent,
+    ApplicationStatusChangedEvent,
+    ApplicationChangedEvent,
 )
 from app.services.quote_manager import mark_quote_state
+
+from app.db.database import get_async_session
 
 from app.config.config import Config
 
@@ -71,15 +74,20 @@ async def message_handler(msg: Msg):
         event_type = data.get("event")
         logger.debug(f"[NATS] パース結果: event_type={event_type}")
 
-        if event_type == "ApplicationConfirmed":
-            event = ApplicationConfirmedEvent(**data)
-            logger.debug(f"[NATS] ApplicationConfirmed イベントインスタンス生成: {event}")
-            await handle_application_confirmed(event)
+        if event_type == "ApplicationCreated":
+            event = ApplicationCreatedEvent(**data)
+            logger.debug(f"[NATS] ApplicationCreated イベントインスタンス生成: {event}")
+            await handle_application_created(event)
 
-        elif event_type == "ApplicationCancelled":
-            event = ApplicationCancelledEvent(**data)
-            logger.debug(f"[NATS] ApplicationCancelled イベントインスタンス生成: {event}")
-            await handle_application_cancelled(event)
+        elif event_type == "ApplicationStatusChanged":
+            event = ApplicationStatusChangedEvent(**data)
+            logger.debug(f"[NATS] ApplicationStatusChanged イベントインスタンス生成: {event}")
+            await handle_application_status_changed(event)
+
+        elif event_type == "ApplicationChanged":
+            event = ApplicationChangedEvent(**data)
+            logger.debug(f"[NATS] ApplicationChanged イベントインスタンス生成: {event}")
+            await handle_application_changed(event)
 
         else:
             logger.warning(f"[NATS] 未対応のイベント種別を受信: event={event_type}")
@@ -90,38 +98,38 @@ async def message_handler(msg: Msg):
 # ------------------------------------------------------------------------------
 # イベント別処理関数群
 # ------------------------------------------------------------------------------
-async def handle_application_confirmed(event: ApplicationConfirmedEvent):
+async def handle_application_created(event: ApplicationCreatedEvent):
     """
-    ApplicationConfirmed イベントの処理
-
-    - 保険申込が確定したことを示すイベント
-    - 対象の quote_id に対して quote_state を "applied" に更新
+    ApplicationCreated イベントの処理
+    - quote_state を "applied" に変更
     """
-    logger.info(f"[NATS] ApplicationConfirmed 処理開始: quote_id={event.quote_id}")
+    logger.info(f"[NATS] ApplicationCreated 処理開始: quote_id={event.quote_id}")
     try:
-        await mark_quote_state(
-            quote_id=event.quote_id,
-            user_id=event.user_id,
-            new_state="applied"
-        )
-        logger.info(f"[NATS] quote_state を 'applied' に更新完了: quote_id={event.quote_id}")
+        async for session in get_async_session():
+            await mark_quote_state(
+                session=session,
+                quote_id=event.quote_id,
+                user_id=event.user_id,
+                new_state="applied"
+            )
+            logger.info(f"[NATS] quote_state を 'applied' に更新完了: quote_id={event.quote_id}")
+            break
     except Exception as e:
-        logger.exception(f"[NATS] ApplicationConfirmed 処理失敗: quote_id={event.quote_id}")
+        logger.exception(f"[NATS] ApplicationCreated 処理失敗: quote_id={event.quote_id}")
 
-async def handle_application_cancelled(event: ApplicationCancelledEvent):
+async def handle_application_status_changed(event: ApplicationStatusChangedEvent):
     """
-    ApplicationCancelled イベントの処理
+    ApplicationStatusChanged イベントの処理
 
-    - 保険申込がキャンセルされたことを示すイベント
-    - 対象の quote_id に対して quote_state を "cancelled" に更新
+    - 保険申込の状態が変更されたことを示すイベント
+    - 対象の quote_id に対して quote_state を更新
     """
-    logger.info(f"[NATS] ApplicationCancelled 処理開始: quote_id={event.quote_id}")
-    try:
-        await mark_quote_state(
-            quote_id=event.quote_id,
-            user_id=event.user_id,
-            new_state="cancelled"
-        )
-        logger.info(f"[NATS] quote_state を 'cancelled' に更新完了: quote_id={event.quote_id}")
-    except Exception as e:
-        logger.exception(f"[NATS] ApplicationCancelled 処理失敗: quote_id={event.quote_id}")
+    logger.info(f"[NATS] ApplicationStatusChanged 処理開始: quote_id={event.quote_id}")
+
+async def handle_application_changed(event: ApplicationChangedEvent):
+    """
+    ApplicationChanged イベントの処理
+
+    - 保険申込の内容が変更されたことを示すイベント
+    """
+    logger.info(f"[NATS] ApplicationChanged 処理開始: quote_id={event.quote_id}")

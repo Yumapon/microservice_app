@@ -8,7 +8,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime, timezone
 
 from app.services.rate_loader import load_interest_rates
+from app.config.config import Config
 
+config = Config()
 logger = logging.getLogger(__name__)
 
 async def validate_quote_before_application(
@@ -30,10 +32,10 @@ async def validate_quote_before_application(
     logger.info("申込前の利率整合性チェック開始: user_id=%s, quote_id=%s", user_id, quote.get("quote_id"))
 
     # ユーザーの見積もりかどうかチェック
-    logger.info(f"quote={quote}")
+    logger.debug(f"quote={quote}")
     user_id_from_quote = quote.get("user_id")
-    logger.info(f"検索した見積もりを作成したユーザ (user_id={user_id})")
-    logger.info(f"見積もりから取得したユーザID (user_id={user_id_from_quote})")
+    logger.debug(f"検索した見積もりを作成したユーザ (user_id={user_id})")
+    logger.debug(f"見積もりから取得したユーザID (user_id={user_id_from_quote})")
     if quote.get("user_id") != user_id:
         raise ValueError("他人の見積もりを利用することはできません")
 
@@ -56,10 +58,13 @@ async def validate_quote_before_application(
         raise ValueError("見積もりに契約開始日が含まれていません")
     
     # 利率情報をMongoDBから取得
-    rates = await load_interest_rates(mongo_client, quote_contract_date)
+    logger.info(f"plan_code:{config.pension['plan_code']}")
+    rates = await load_interest_rates(
+        db = mongo_client,
+        plan_code = config.pension["plan_code"],
+        contract_date = quote_contract_date
+    )
     interest_rate = rates.get("contract_rate")
-    #min_rate = rates.get("min_rate")
-    #logger.info("[利率取得済] interest_rate: %s min_rate: %s", interest_rate, min_rate)
     logger.info("[利率取得済] interest_rate: %s ", interest_rate)
 
     if rates is None:

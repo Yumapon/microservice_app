@@ -27,4 +27,7 @@ def get_mongo_client() -> AsyncIOMotorClient:
     Returns:
         AsyncIOMotorClient: 非同期MongoDBクライアントインスタンス
     """
-    return AsyncIOMotorClient(config.mongodb["dsn"])
+    return AsyncIOMotorClient(
+        config.mongodb["dsn"],
+        uuidRepresentation="standard"
+    )

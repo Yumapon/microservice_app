@@ -13,278 +13,430 @@
 import logging
 import uuid
 import json
-import httpx
+from uuid import UUID
 import asyncpg
 from datetime import datetime
 from typing import Dict
 from typing import List
 
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
+from motor.motor_asyncio import AsyncIOMotorClient
+
+from fastapi import HTTPException
+
 from app.config.config import Config
+from app.db_models.applications import (
+    Application,
+    ApplicationDetail
+)
 from app.models.applications import (
-    ApplicationResponseModel,
-    PensionQuoteScenarioModel,
-    ApplicationStatusResponseModel
+    PensionApplicationScenarioModel,
+    PensionApplicationResponseModel,
+    PensionApplicationRequestModel,
+    QuoteSummaryModel,
+    QuoteScenarioModel,
+    ApplicationBeneficiariesModel
 )
-from app.models.events import (
-    ApplicationConfirmedEvent,
-    ApplicationCancelledEvent
-)
-from app.services.nats_publisher import publish_event
 
 # ------------------------------------------------------------------------------
 # 設定・ロガー初期化
 # ------------------------------------------------------------------------------
 logger = logging.getLogger(__name__)
 config = Config()
+rules = config.pension
+
+####参照処理
 
 # ------------------------------------------------------------------------------
-# 保険申込の新規作成処理
+# 申し込み一覧取得（ユーザー単位、シナリオなし）
 # ------------------------------------------------------------------------------
-async def create_application(user_id: str, quote: Dict, access_token: str, status: str = "applied") -> ApplicationResponseModel:
+async def get_applications_by_user_id(
+    session: AsyncSession,
+    user_id: UUID
+) -> List[PensionApplicationResponseModel]:
     """
-    指定見積もりをもとに申込処理を行い、DB登録および NATS イベント発行を行う
-    """
-    quote_id = quote.get("quote_id")
-    if quote.get("user_id") != user_id:
-        raise ValueError("他人の見積もりに対して申込処理はできません")
-    if quote.get("contract_date") is None:
-        raise ValueError("見積もりに契約日が設定されていません")
-
-    # birth_date と contract_date を datetime.date に変換（必要に応じて）
-    birth_date = quote["birth_date"]
-    if isinstance(birth_date, str):
-        birth_date = datetime.strptime(birth_date, "%Y-%m-%d").date()
-
-    contract_date = quote["contract_date"]
-    if isinstance(contract_date, str):
-        contract_date = datetime.strptime(contract_date, "%Y-%m-%d").date()
-
-    # scenario_data を JSON 文字列に変換（JSONB対応）
-    scenario_json = json.dumps(quote["scenarios"], ensure_ascii=False)
-
-    # DBに申し込み情報を格納する
-    application_id = str(uuid.uuid4())
-    now = datetime.utcnow()
-    dsn = config.postgres["dsn"]
-    conn = await asyncpg.connect(dsn=dsn)
-    try:
-        await conn.execute("""
-            INSERT INTO applications (
-                application_id, quote_id, user_id, application_status,
-                user_consent, applied_at,
-                snapshot_birth_date, snapshot_gender,
-                snapshot_monthly_premium, snapshot_payment_period_years, snapshot_tax_deduction_enabled,
-                snapshot_contract_date, snapshot_contract_interest_rate,
-                snapshot_total_paid_amount, snapshot_pension_start_age, snapshot_annual_tax_deduction,
-                scenario_data
-            )
-            VALUES (
-                $1, $2, $3, $4,
-                $5, $6,
-                $7, $8, $9, $10, $11,
-                $12, $13, $14, $15, $16,
-                $17
-            )
-        """, application_id, quote_id, user_id, status,
-             True, now,
-             birth_date, quote["gender"],
-             quote["monthly_premium"], quote["payment_period_years"], quote["tax_deduction_enabled"],
-             contract_date, quote["contract_interest_rate"],
-             quote["total_paid_amount"], quote["pension_start_age"], quote["annual_tax_deduction"],
-             scenario_json)
-    finally:
-        await conn.close()
-
-    # NATS に ApplicationConfirmed イベントを発行
-    event = ApplicationConfirmedEvent(
-        event="ApplicationConfirmed",
-        quote_id=quote_id,
-        user_id=user_id,
-        application_id=application_id,
-        confirmed_at=now.isoformat()
-    )
-    await publish_event("applications.ApplicationConfirmed", event.dict())
-
-    return ApplicationResponseModel(
-        application_id=application_id,
-        quote_id=quote_id,
-        status=status,
-        snapshot_birth_date=birth_date,
-        snapshot_gender=quote["gender"],
-        snapshot_monthly_premium=quote["monthly_premium"],
-        snapshot_payment_period_years=quote["payment_period_years"],
-        snapshot_tax_deduction_enabled=quote["tax_deduction_enabled"],
-        snapshot_contract_date=contract_date,
-        snapshot_contract_interest_rate=quote["contract_interest_rate"],
-        snapshot_total_paid_amount=quote["total_paid_amount"],
-        snapshot_pension_start_age=quote["pension_start_age"],
-        snapshot_annual_tax_deduction=quote["annual_tax_deduction"],
-        scenario_data=[PensionQuoteScenarioModel(**s) for s in quote["scenarios"]]
-    )
-
-# ------------------------------------------------------------------------------
-# 保険申込ステータスを更新（キャンセル・差戻し等）
-# ------------------------------------------------------------------------------
-async def update_application_status(application_id: str, user_id: str, new_status: str) -> ApplicationStatusResponseModel:
-    """
-    指定された申込のステータスを更新し、必要に応じて NATS イベントも発行する
-    """
-    logger.info("申込ステータス更新: application_id=%s, user_id=%s, new_status=%s", application_id, user_id, new_status)
-    dsn = config.postgres["dsn"]
-    conn = await asyncpg.connect(dsn=dsn)
-
-    try:
-        row = await conn.fetchrow("""
-            SELECT application_id, quote_id, user_id
-            FROM applications
-            WHERE application_id = $1 AND deleted_at IS NULL
-        """, application_id)
-
-        if not row:
-            raise ValueError("申込が見つかりません")
-        if str(row["user_id"]) != user_id:
-            raise ValueError("他人の申込にアクセスできません")
-
-        await conn.execute("""
-            UPDATE applications
-            SET application_status = $1
-            WHERE application_id = $2
-        """, new_status, application_id)
-
-        # Step 2: NATS に ApplicationCancelled イベントを発行（必要時のみ）
-        if new_status == "cancelled":
-            event = ApplicationCancelledEvent(
-                event="ApplicationCancelled",
-                quote_id=str(row["quote_id"]),
-                user_id=user_id,
-                application_id=application_id,
-                cancelled_at=datetime.utcnow().isoformat()
-            )
-            await publish_event("applications.ApplicationCancelled", event.dict())
-
-        return ApplicationStatusResponseModel(
-            application_id=str(row["application_id"]),
-            quote_id=str(row["quote_id"]),
-            status=new_status
-        )
-
-    finally:
-        await conn.close()
-
-# ------------------------------------------------------------------------------
-# 自ユーザーの申込一覧を取得
-# ------------------------------------------------------------------------------
-async def get_applications_by_user_id(user_id: str) -> List[ApplicationResponseModel]:
-    """
-    指定ユーザーIDに紐づくすべての申込一覧を取得する
-
-    Parameters:
-        user_id (str): ユーザーID（Keycloakのsub）
-
-    Returns:
-        List[ApplicationResponseModel]: 申込情報のリスト（スナップショット含む）
+    指定ユーザーの申込一覧を取得
     """
     logger.info("申込一覧取得: user_id=%s", user_id)
-    dsn = config.postgres["dsn"]
-    conn = await asyncpg.connect(dsn=dsn)
 
-    try:
-        rows = await conn.fetch("""
-            SELECT
-                application_id, quote_id, application_status,
-                snapshot_birth_date, snapshot_gender,
-                snapshot_monthly_premium, snapshot_payment_period_years, snapshot_tax_deduction_enabled,
-                snapshot_contract_date, snapshot_contract_interest_rate,
-                snapshot_total_paid_amount, snapshot_pension_start_age, snapshot_annual_tax_deduction,
-                scenario_data
-            FROM applications
-            WHERE user_id = $1 AND deleted_at IS NULL
-            ORDER BY applied_at DESC
-        """, user_id)
+    stmt = (
+        select(Application, ApplicationDetail)
+        .join(ApplicationDetail, Application.application_id == ApplicationDetail.application_id)
+        .where(Application.user_id == user_id)
+        .order_by(Application.applied_at.desc())
+    )
+    results = await session.execute(stmt)
 
-        return [
-            ApplicationResponseModel(
-                application_id=str(row["application_id"]),
-                quote_id=str(row["quote_id"]),
-                status=row["application_status"],
-                snapshot_birth_date=row["snapshot_birth_date"],
-                snapshot_gender=row["snapshot_gender"],
-                snapshot_monthly_premium=row["snapshot_monthly_premium"],
-                snapshot_payment_period_years=row["snapshot_payment_period_years"],
-                snapshot_tax_deduction_enabled=row["snapshot_tax_deduction_enabled"],
-                snapshot_contract_date=row["snapshot_contract_date"],
-                snapshot_contract_interest_rate=float(row["snapshot_contract_interest_rate"]),
-                snapshot_total_paid_amount=row["snapshot_total_paid_amount"],
-                snapshot_pension_start_age=row["snapshot_pension_start_age"],
-                snapshot_annual_tax_deduction=row["snapshot_annual_tax_deduction"],
-                scenario_data=[
-                    PensionQuoteScenarioModel(**s) for s in json.loads(row["scenario_data"])
-                ]
-            )
-            for row in rows
-        ]
-
-    finally:
-        await conn.close()
+    return [
+        _build_application_response_model(application, detail, scenarios=[], beneficiaries=[])
+        for application, detail in results.all()
+    ]
 
 # ------------------------------------------------------------------------------
-# 自ユーザーの特定申込を取得
+# 申し込み単体取得
 # ------------------------------------------------------------------------------
-async def get_application_by_id(application_id: str, user_id: str) -> ApplicationResponseModel:
+async def get_application_by_application_id(
+        session: AsyncSession, 
+        application_id: UUID, 
+        user_id: UUID
+    ) -> PensionApplicationResponseModel:
     """
-    指定された申込IDの詳細情報を取得する（本人の申込のみ）
+    申し込みIDを指定して1件取得
+    """
+    logger.info("申込取得: application_id=%s, user_id=%s", application_id, user_id)
 
-    Parameters:
-        application_id (str): 対象申込ID
-        user_id (str): ユーザーID（本人確認用）
+    result = await session.execute(
+        select(Application, ApplicationDetail)
+        .join(ApplicationDetail, Application.application_id == ApplicationDetail.application_id)
+        .where(Application.application_id == application_id)
+    )
+    record = result.first()
+    if not record:
+        raise HTTPException(status_code=404, detail="申し込みが存在しません")
+    
+    application, detail = record
+    if str(application.user_id) != str(user_id):
+        raise HTTPException(status_code=403, detail="他人の申し込みは更新できません")
+
+    logger.info(f"application{application}")
+    response = _build_application_response_model(application, detail, scenarios=[], beneficiaries=[])
+    return response
+
+# ------------------------------------------------------------------------------
+# 申し込みシナリオ一覧取得（申し込みID単位）
+# ------------------------------------------------------------------------------
+async def get_scenarios_by_application_id(
+    mongo_client: AsyncIOMotorClient,
+    application_id: str
+) -> List[PensionApplicationScenarioModel]:
+    """
+    指定された application_id に対応するシナリオ情報を MongoDB から取得する。
+    """
+    try:
+        db_name = config.mongodb["database"]
+        collection_name = config.mongodb["scenario_collection"]
+        logger.info(f"MongoDBシナリオ取得開始 (application_id={application_id})")
+
+        cursor = mongo_client[db_name][collection_name].find({"application_id": application_id})
+        documents = await cursor.to_list(length=None)
+
+        logger.info(f"MongoDBシナリオ取得成功 (application_id={application_id}, 件数={len(documents)})")
+
+        scenarios = [PensionApplicationScenarioModel(**doc) for doc in documents]
+        return scenarios
+
+    except Exception as e:
+        logger.error(f"MongoDBシナリオ取得失敗 (application_id={application_id}): {e}")
+        return []
+    
+# ------------------------------------------------------------------------------
+# 申し込み保険金受け取り代理人取得（申し込みID単位）
+# ------------------------------------------------------------------------------
+async def get_beneficiaries_by_application_id(
+    mongo_client: AsyncIOMotorClient,
+    application_id: str
+) -> List[ApplicationBeneficiariesModel]:
+    """
+    指定された application_id に対応する保険金受け取り代理人情報を MongoDB から取得する。
+    """
+    try:
+        db_name = config.mongodb["database"]
+        collection_name = config.mongodb["collection"]
+        collection = mongo_client[db_name][collection_name]
+        logger.info(f"MongoDB保険金受け取り代理人情報取得開始 (application_id={application_id})")
+
+        cursor = collection.find({"application_id": application_id})
+        documents = await cursor.to_list(length=None)
+
+        logger.info(f"MongoDB保険金受け取り代理人情報取得成功 (application_id={application_id}, 件数={len(documents)})")
+
+        beneficiaries = [ApplicationBeneficiariesModel(**doc) for doc in documents]
+        return beneficiaries
+
+    except Exception as e:
+        logger.error(f"MongoDB保険金受け取り代理人情報取得失敗 (application_id={application_id}): {e}")
+        return []
+
+####更新処理
+
+# ------------------------------------------------------------------------------
+# 申し込み保存処理（新規登録）
+# ------------------------------------------------------------------------------
+async def save_application(
+    application_id: UUID,
+    session: AsyncSession,
+    user_id: UUID,
+    quote: QuoteSummaryModel,
+    request: PensionApplicationRequestModel,
+    operator_id: str = None,
+    status: str = "pending"
+) -> UUID:
+    """
+    指定見積もりをもとに申込処理を行い、DB登録を行う
 
     Returns:
-        ApplicationResponseModel: 詳細な申込情報（スナップショット付き）
-
-    Raises:
-        ValueError: 他人の申込、または見つからない場合
+        UUID: 登録した見積もりの user_id
     """
-    logger.info("申込詳細取得: application_id=%s, user_id=%s", application_id, user_id)
-    dsn = config.postgres["dsn"]
-    conn = await asyncpg.connect(dsn=dsn)
+    logger.info(f"申し込み保存開始: user_id={user_id}, quote_id={quote.quote_id}")
+
+    if str(quote.user_id) != str(user_id):
+        logger.error(f"見積もりのuser_id:{quote.user_id}, リクエストuser_id:{user_id}")
+        raise ValueError("他人の見積もりに対して申込処理はできません")
+    if quote.contract_date is None:
+        logger.error(f"見積もりに契約日が設定されていません quote_id={quote.quote_id}")
+        raise ValueError("見積もりに契約日が設定されていません")
+
+    # 型変換
+    birth_date = (
+        datetime.strptime(quote.birth_date, "%Y-%m-%d").date()
+        if isinstance(quote.birth_date, str)
+        else quote.birth_date
+    )
+    contract_date = (
+        datetime.strptime(quote.contract_date, "%Y-%m-%d").date()
+        if isinstance(quote.contract_date, str)
+        else quote.contract_date
+    )
+
+    # applications テーブル作成
+    application = Application(
+        application_id=application_id,
+        quote_id=quote.quote_id,
+        user_id=user_id,
+        application_status=status,
+        approved_by = None,
+        application_number = None,
+        applied_at=datetime.now(),
+        created_by=operator_id,
+        updated_by=operator_id,
+    )
+
+    # application_details テーブル作成（スナップショット）
+    detail = ApplicationDetail(
+        application_id=application_id,
+        birth_date=birth_date,
+        gender=quote.gender,
+        monthly_premium=quote.monthly_premium,
+        payment_period_years=quote.payment_period_years,
+        tax_deduction_enabled=quote.tax_deduction_enabled,
+        contract_date=contract_date,
+        contract_interest_rate=quote.contract_interest_rate,
+        total_paid_amount=quote.total_paid_amount,
+        pension_start_age=quote.pension_start_age,
+        annual_tax_deduction=quote.annual_tax_deduction,
+        plan_code=quote.plan_code,
+        payment_method = request.payment_method,
+        user_consent=True,
+        identity_verified = request.identity_verified,
+    )
+
+    # DB登録
+    session.add_all([application, detail])
+    await session.commit()
+    logger.info(f"申し込み保存完了: application_id={application_id}")
+
+# ------------------------------------------------------------------------------
+# ステータス更新処理
+# ------------------------------------------------------------------------------
+async def update_application_status(
+        session: AsyncSession, 
+        application_id: UUID, 
+        user_id: UUID, 
+        new_status: str
+    ):
+    """
+    見積もりステータスを更新
+    """
+    logger.info("ステータス更新: application_id=%s, new_state=%s", application_id, new_status)
+
+    result = await session.execute(
+        select(Application).where(Application.application_id == application_id)
+    )
+    application = result.scalar_one_or_none()
+
+    if not application:
+        raise HTTPException(status_code=404, detail="申し込みが存在しません")
+    if str(application.user_id) != str(user_id):
+        raise HTTPException(status_code=403, detail="他人の申し込みは更新できません")
+
+    application.application_status = new_status
+
+    #Commit
+    await session.commit()
+
+    return
+
+# ------------------------------------------------------------------------------
+# 任意フィールド更新処理
+# ------------------------------------------------------------------------------
+async def update_application(
+    session: AsyncSession,
+    application_id: UUID,
+    user_id: UUID,
+    updates: PensionApplicationRequestModel
+) -> PensionApplicationResponseModel:
+    logger.info("見積もり更新開始: application_id=%s, user_id=%s", application_id, user_id)
+
+    result = await session.execute(
+        select(Application, ApplicationDetail)
+        .join(ApplicationDetail)
+        .where(Application.application_id == application_id)
+    )
+    record = result.first()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="申し込みが存在しません")
+
+    application, detail = record
+
+    if application.user_id != user_id:
+        raise HTTPException(status_code=403, detail="他人の申し込みは更新できません")
+
+    if application.application_status != "pending":
+        raise HTTPException(status_code=400, detail="pendingd状態のみ更新可能です")
+
+    detail.user_consent = updates.user_consent
+    detail.payment_method = updates.payment_method
+    detail.identity_verified = updates.identity_verified
+
+    await session.commit()
+
+    return _build_application_response_model(application, detail, scenarios=[], beneficiaries=[])
+
+# ------------------------------------------------------------------------------
+# 保険金受け取り代理人保存（既存削除→上書き保存）
+# ------------------------------------------------------------------------------
+async def save_beneficiaries_to_mongo(
+    mongo_client: AsyncIOMotorClient,
+    application_id: str,
+    beneficiaries: List[ApplicationBeneficiariesModel]
+):
+    logger.info("MongoDBシナリオ上書き開始: application_id=%s", application_id)
+
+    db_name = config.mongodb["database"]
+    collection_name = config.mongodb["collection"]
+    collection = mongo_client[db_name][collection_name]
 
     try:
-        row = await conn.fetchrow("""
-            SELECT
-                application_id, quote_id, user_id, application_status,
-                snapshot_birth_date, snapshot_gender,
-                snapshot_monthly_premium, snapshot_payment_period_years, snapshot_tax_deduction_enabled,
-                snapshot_contract_date, snapshot_contract_interest_rate,
-                snapshot_total_paid_amount, snapshot_pension_start_age, snapshot_annual_tax_deduction,
-                scenario_data
-            FROM applications
-            WHERE application_id = $1 AND deleted_at IS NULL
-        """, application_id)
+        # 既存データを削除
+        delete_result = await collection.delete_many({"application_id": str(application_id)})
+        logger.info(f"[MongoDB] 既存削除完了 (deleted_count={delete_result.deleted_count})")
 
-        if not row:
-            raise ValueError("申込が見つかりません")
+        # 登録用データに変換
+        now = datetime.utcnow()
+        insert_docs = [
+            {
+                "application_id": str(application_id),
+                "beneficiaries": [b.dict() for b in beneficiaries],
+                "updated_at": now,
+            }
+        ]
 
-        if str(row["user_id"]) != user_id:
-            raise ValueError("他人の申込にアクセスできません")
+        # MongoDBに一括挿入
+        if insert_docs:
+            insert_result = await collection.insert_many(insert_docs)
+            logger.info(f"[MongoDB] 保険金受取人情報を登録 (inserted_count={len(insert_result.inserted_ids)})")
+        else:
+            logger.warning("[MongoDB] 登録対象の受取人情報が空のためスキップ")
 
-        return ApplicationResponseModel(
-                application_id=str(row["application_id"]),
-                quote_id=str(row["quote_id"]),
-                status=row["application_status"],
-                snapshot_birth_date=row["snapshot_birth_date"],
-                snapshot_gender=row["snapshot_gender"],
-                snapshot_monthly_premium=row["snapshot_monthly_premium"],
-                snapshot_payment_period_years=row["snapshot_payment_period_years"],
-                snapshot_tax_deduction_enabled=row["snapshot_tax_deduction_enabled"],
-                snapshot_contract_date=row["snapshot_contract_date"],
-                snapshot_contract_interest_rate=float(row["snapshot_contract_interest_rate"]),
-                snapshot_total_paid_amount=row["snapshot_total_paid_amount"],
-                snapshot_pension_start_age=row["snapshot_pension_start_age"],
-                snapshot_annual_tax_deduction=row["snapshot_annual_tax_deduction"],
-                scenario_data=[
-                    PensionQuoteScenarioModel(**s) for s in json.loads(row["scenario_data"])
-                ]
-        )
+    except Exception as e:
+        logger.exception(f"[MongoDB] 保険金受取人情報の保存中にエラー発生: {e}")
+        raise
 
-    finally:
-        await conn.close()
+# ------------------------------------------------------------------------------
+# シナリオ保存（既存削除→上書き保存）
+# ------------------------------------------------------------------------------
+async def save_scenarios_to_mongo(
+    mongo_client: AsyncIOMotorClient,
+    application_id: str,
+    scenarios: List[QuoteScenarioModel]
+):
+    logger.info("MongoDBシナリオ上書き開始: application_id=%s", application_id)
+
+    db_name = config.mongodb["database"]
+    collection_name = config.mongodb["scenario_collection"]
+    collection = mongo_client[db_name][collection_name]
+
+    try:
+        # 既存データを削除
+        delete_result = await collection.delete_many({"application_id": str(application_id)})
+        logger.info(f"[MongoDB] 既存削除完了 (deleted_count={delete_result.deleted_count})")
+
+        scenario_docs = []
+        for scenario in scenarios:
+            doc = scenario.model_dump(mode="json")
+
+            # MongoDB用のメタデータ追加
+            doc["application_id"] = str(application_id)
+            doc["logged_at"] = datetime.utcnow()
+
+            # セット形式の異常値を検出し修正（過去の変換バグ対策）
+            if isinstance(doc.get("scenario_type"), set):
+                scenario_type_set = doc["scenario_type"]
+                if len(scenario_type_set) == 1:
+                    doc["scenario_type"] = next(iter(scenario_type_set))
+                else:
+                    logger.error("scenario_typeが不正（複数のset）: %s", scenario_type_set)
+                    continue  # このレコードはスキップ
+
+            scenario_docs.append(doc)
+
+        if scenario_docs:
+            await collection.insert_many(scenario_docs)
+            logger.info("MongoDBシナリオ上書き完了: 件数=%d", len(scenario_docs))
+        else:
+            logger.warning("保存対象のシナリオが空のためMongoDBへの保存をスキップ")
+
+    except Exception as e:
+        logger.exception(f"[MongoDB] 保険金受取人情報の保存中にエラー発生: {e}")
+        raise
+
+# ------------------------------------------------------------------------------
+# 内部: Applicationレスポンスモデル組み立て
+# ------------------------------------------------------------------------------
+def _build_application_response_model(
+    application: Application,
+    detail: ApplicationDetail,
+    scenarios: List[PensionApplicationScenarioModel],
+    beneficiaries: List[ApplicationBeneficiariesModel],
+) -> PensionApplicationResponseModel:
+    """
+    Application + ApplicationDetail を統合してレスポンスモデルに変換
+    """
+    return PensionApplicationResponseModel(
+        # --- applications テーブル ---
+        application_id=application.application_id,
+        quote_id=application.quote_id,
+        user_id=application.user_id,
+        application_status=application.application_status,
+        user_consent=detail.user_consent,
+        payment_method=detail.payment_method,
+        identity_verified=detail.identity_verified,
+        approved_by=application.approved_by,
+        approval_date=application.approval_date,
+        application_number=application.application_number,
+        applied_at=application.applied_at,
+        updated_at=application.updated_at,
+        created_by=application.created_by,
+        updated_by=application.updated_by,
+
+        # --- application_details テーブル ---
+        birth_date=detail.birth_date,
+        gender=detail.gender,
+        monthly_premium=detail.monthly_premium,
+        payment_period_years=detail.payment_period_years,
+        tax_deduction_enabled=detail.tax_deduction_enabled,
+        contract_date=detail.contract_date,
+        contract_interest_rate=float(detail.contract_interest_rate),
+        total_paid_amount=detail.total_paid_amount,
+        pension_start_age=detail.pension_start_age,
+        annual_tax_deduction=detail.annual_tax_deduction,
+        plan_code=detail.plan_code,
+        detail_payment_method=detail.payment_method,
+
+        # --- MongoDB ---
+        scenarios=scenarios,
+        beneficiaries=beneficiaries
+    )

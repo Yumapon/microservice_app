@@ -12,6 +12,8 @@ from typing import Optional
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
+from app.models.events import QuoteCreatedEvent
+
 from app.config.config import Config
 
 config = Config()
@@ -39,6 +41,8 @@ async def close_nats_connection():
     if nats_client and nats_client.is_connected:
         await nats_client.close()
         logger.info("NATS接続をクローズしました")
+
+logger = logging.getLogger(__name__)
 
 async def publish_event(subject: str, payload: dict):
     """

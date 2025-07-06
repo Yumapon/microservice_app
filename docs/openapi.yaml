@@ -391,37 +391,99 @@ paths:
           description: 他人の申込にアクセスしようとした場合
         '404':
           description: 該当申込が存在しない
-
-  /api/v1/my/applications/{application_id}/cancel:
-    put:
+    patch:
       tags:
         - Application
-      summary: 保険申込のキャンセル
-      description: 指定された申込IDに対して、申込ステータスを 'cancelled' に変更します。
+      summary: ログインユーザーの申込情報を部分更新
+      description: 申込ステータスが `pending` の場合のみ、内容を部分的に更新可能です。
       security:
         - bearerAuth: []
       parameters:
         - name: application_id
           in: path
           required: true
-          description: キャンセル対象の申込ID
+          description: 申込ID（UUID）
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PartialApplicationUpdateModel'
+      responses:
+        '200':
+          description: 更新後の申込情報
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponseModel'
+        '400':
+          description: 更新不可（不正な状態や入力）
+        '401':
+          description: 認証失敗
+        '403':
+          description: 他人の申込に対する更新要求
+        '404':
+          description: 該当申込が存在しない
+    delete:
+      tags:
+        - Application
+      summary: ログインユーザーの申込を削除
+      description: 指定された申込を削除します（ステータス更新またはフラグ付けによる論理削除を想定）。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: application_id
+          in: path
+          required: true
+          description: 対象申込ID（UUID）
           schema:
             type: string
       responses:
         '200':
-          description: キャンセル成功時のステータス応答
+          description: 削除またはステータス変更成功
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApplicationStatusResponseModel'
         '400':
-          description: ステータス変更不可などの不正リクエスト
-        '401':
-          description: 認証失敗
-        '403':
-          description: 他人の申込に対するキャンセル
+          description: 不正な状態、または削除不可
         '404':
-          description: 申込が存在しない
+          description: 該当申込が存在しない
+
+  /api/v1/my/applications/{application_id}/changestate:
+    put:
+      tags:
+        - Application
+      summary: 保険申込のステータス変更
+      description: 指定された申込IDに対して、状態遷移ルールに基づきステータスを更新します。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: application_id
+          in: path
+          required: true
+          description: ステータス変更対象の申込ID（UUID）
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationStateUpdateRequest'
+      responses:
+        '200':
+          description: ステータス変更成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationStateUpdateResponse'
+        '400':
+          description: 不正な状態遷移またはステータス変更失敗
+        '404':
+          description: 対象申込が存在しない
 
   /api/v1/my/contracts:
     get:
@@ -982,3 +1044,58 @@ components:
           maximum: 30
         tax_deduction_enabled:
           type: boolean
+    PartialApplicationUpdateModel:
+      type: object
+      description: 申込情報の部分更新用モデル
+      properties:
+        payment_method:
+          type: string
+          enum: [credit_card, bank_transfer]
+          description: 支払方法
+        identity_verified:
+          type: boolean
+          description: 本人確認済みフラグ
+        user_consent:
+          type: boolean
+          description: ユーザー同意フラグ
+        application_beneficiaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApplicationBeneficiaryRequestModel'
+
+    ApplicationBeneficiaryRequestModel:
+      type: object
+      description: 保険金受取人情報（申込入力用）
+      properties:
+        name:
+          type: string
+          description: 氏名
+        relation:
+          type: string
+          description: 契約者との関係
+        allocation:
+          type: integer
+          description: 割合（%）
+        note:
+          type: string
+          description: 備考
+
+    ApplicationStateUpdateRequest:
+      type: object
+      properties:
+        new_state:
+          type: string
+          enum: [pending, under_review, confirmed, rejected, cancelled]
+          description: 更新後の申込ステータス
+      required:
+        - new_state
+
+    ApplicationStateUpdateResponse:
+      type: object
+      properties:
+        application_id:
+          type: string
+        from_state:
+          type: string
+        to_state:
+          type: string

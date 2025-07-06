@@ -2,8 +2,11 @@
 """
 NATS経由で受信する保険申込関連イベントのPydanticモデル定義
 - QuoteCreated: 見積もり作成時のイベント
-- ApplicationConfirmedEvent: 申込確定時のイベント
-- ApplicationCancelledEvent: 申込キャンセル時のイベント
+- QuoteStatusChanged: 見積もり状態変更時のイベント
+- QuoteChanged: 見積もり修正時のイベント
+- ApplicationCreated: 申込作成のイベント
+- ApplicationStatusChanged: 申込状態変更時のイベント
+- ApplicationChanged: 申込修正時のイベント
 """
 
 from uuid import UUID
@@ -52,9 +55,9 @@ class QuoteChangedEvent(BaseModel):
     changed_at: datetime = Field(..., description="変更日時")
 
 # ------------------------------------------------------------------------------
-# ApplicationConfirmed イベントモデル
+# ApplicationCreated イベントモデル
 # ------------------------------------------------------------------------------
-class ApplicationConfirmedEvent(BaseModel):
+class ApplicationCreatedEvent(BaseModel):
     """
     保険申込が確定したことを示すイベントモデル
     application_service から quotation_service に対して送信される
@@ -62,25 +65,34 @@ class ApplicationConfirmedEvent(BaseModel):
     このイベントを受信した quotation_service は、
     対象の quote_id に紐づく quote_state を "applied" に更新する
     """
-    event: str = Field(..., description='イベント種別（固定値: "ApplicationConfirmed"）')
-    quote_id: str = Field(..., description="対象の見積もりID（UUID）")
-    user_id: str = Field(..., description="申込者のユーザーID（UUID）")
-    application_id: str = Field(..., description="確定済みの申込ID（UUID）")
-    confirmed_at: datetime = Field(..., description="申込が確定された日時（ISO 8601形式）")
+    event: Literal["ApplicationCreated"] = "ApplicationCreated"
+    quote_id: UUID = Field(..., description="対象の見積もりID")
+    user_id: UUID = Field(..., description="申込者のユーザーID（UUID）")
+    application_id: UUID = Field(..., description="確定済みの申込ID（UUID）")
+    created_at: datetime = Field(..., description="申込が確定された日時（ISO 8601形式）")
 
 # ------------------------------------------------------------------------------
-# ApplicationCancelled イベントモデル
+# ApplicationStatusChanged イベントモデル
 # ------------------------------------------------------------------------------
-class ApplicationCancelledEvent(BaseModel):
+class ApplicationStatusChangedEvent(BaseModel):
     """
-    保険申込がキャンセルされたことを示すイベントモデル
-    application_service から quotation_service に対して送信される
+    見積もり状態が変更されたことを通知するイベントモデル
+    MongoDBに保存され、変更履歴として扱う
+    """
+    event: Literal["ApplicationStatusChanged"] = "ApplicationStatusChanged"
+    application_id: UUID = Field(..., description="対象の申し込みID")
+    from_state: str = Field(..., description="変更前の状態")
+    to_state: str = Field(..., description="変更後の状態")
+    changed_at: datetime = Field(..., description="変更日時")
 
-    このイベントを受信した quotation_service は、
-    対象の quote_id に紐づく quote_state を "cancelled" に更新する
+# ------------------------------------------------------------------------------
+# ApplicationChanged イベントモデル
+# ------------------------------------------------------------------------------
+class ApplicationChangedEvent(BaseModel):
     """
-    event: str = Field(..., description='イベント種別（固定値: "ApplicationCancelled"）')
-    quote_id: str = Field(..., description="対象の見積もりID（UUID）")
-    user_id: str = Field(..., description="申込者のユーザーID（UUID）")
-    application_id: str = Field(..., description="キャンセル対象の申込ID（UUID）")
-    cancelled_at: datetime = Field(..., description="申込がキャンセルされた日時（ISO 8601形式）")
+    見積もり内容が変更されたことを通知するイベントモデル
+    MongoDBに保存され、変更履歴として扱う
+    """
+    event: Literal["ApplicationChanged"] = "ApplicationChanged"
+    application_id: UUID = Field(..., description="対象の申し込みID")
+    changed_at: datetime = Field(..., description="変更日時")
