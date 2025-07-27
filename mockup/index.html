@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>保険アプリ トップ</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <canvas id="blaster-bg"></canvas>
+  <!-- ヘッダー -->
+  <header class="site-header">
+    <div class="logo">保険アプリ</div>
+    <nav class="nav">
+      <a href="#">保険を探す</a>
+      <a href="#">診断ツール</a>
+      <a href="#">比較</a>
+      <a href="#">ログイン</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="certificate-section">
+    <h2 class="section-title">契約証書 & 積立情報</h2>
+
+    <div class="contract-meta">
+        <span class="badge plan-name">年金プランA</span>
+        <span class="badge contract-status">契約済</span>
+    </div>
+
+    <div class="certificate-wrapper">
+        <!-- 保険証カード -->
+        <div class="certificate-card flip-card">
+        <div class="flip-card-inner">
+            <div class="flip-card-front">
+            <div class="paper-effect">
+                <h2>保険証</h2>
+                <p>契約済：✔</p>
+                <p class="hint">クリックで詳細</p>
+            </div>
+            </div>
+            <div class="flip-card-back">
+            <div class="paper-effect back">
+                <p>契約者：山田 太郎 様</p>
+                <p>保険種別：個人年金保険</p>
+                <p>契約日：2025年7月8日</p>
+                <p class="stamp">🟥 認印</p>
+            </div>
+            </div>
+        </div>
+        </div>
+
+        <!-- 契約数の推移グラフ -->
+        <div class="contract-trend">
+        <h3>契約数の推移（過去7日）</h3>
+        <canvas id="contractTrendChart" width="360" height="200"></canvas>
+        </div>
+
+        <!-- 積立残高表示 -->
+        <div class="savings-widget">
+        <div class="savings-amount">
+            現在の積立額：<span id="savingsAmount">¥0</span>
+        </div>
+        <canvas id="savingsChart" width="260" height="200"></canvas>
+        <p class="savings-hint">※過去7ヶ月間の積立状況を表示しています。</p>
+        </div>
+    </div>
+
+    <div class="congrats-banner">
+        🎉 初めての契約、おめでとうございます！
+    </div>
+    </section>
+
+    <!-- 契約進捗ステップバー -->
+    <section class="progress-section">
+    <h2>申込状況</h2>
+    <div class="progress-track">
+        <div class="node active">
+        <div class="icon">📄</div>
+        見積
+        <div class="line"></div>
+        <span class="done-label">完了</span>
+        </div>
+        <div class="line"></div>
+        <div class="node active">
+        <div class="icon">📄</div>
+        申込
+        <div class="line"></div>
+        <span class="done-label">完了</span>
+        </div>
+        <div class="line"></div>
+        <div class="node active">
+        <div class="icon">📄</div>
+        本人確認
+        <div class="line"></div>
+        <span class="done-label">完了</span>
+        </div>
+        <div class="line"></div>
+        <div class="node">
+        <div class="icon">📄</div>
+        審査
+        <div class="line"></div>
+        </div>
+        <div class="line"></div>
+        <div class="node">
+        <div class="icon">📄</div>
+        契約
+        <div class="line"></div>
+        </div>
+        <div class="line"></div>
+        <div class="node">
+        <div class="icon">📄</div>
+        証書
+        </div>
+    </div>
+    </section>
+
+    <!-- 保険商品カードセクション -->
+    <section class="product-cards">
+    <article class="card">
+        <div class="product-image">
+        <img src="医療保険.png" alt="医療保険ロゴ" />
+        </div>
+        <h3>医療保険</h3>
+        <p class="subtitle">入院・手術をカバー<br>月額例：1,900円〜</p>
+        <ul class="badges">
+        <li>先進医療対応</li>
+        <li>女性疾病対応</li>
+        </ul>
+        <!-- カード内のアクションボタン -->
+        <div class="actions">
+        <button><span>🔍</span> 詳細を見る</button>
+        <button><span>🧮</span> 見積もる</button>
+        </div>
+    </article>
+
+    <article class="card">
+        <div class="product-image">
+        <img src="がん保険.png" alt="がん保険ロゴ" />
+        </div>
+        <h3>がん保険</h3>
+        <p class="subtitle">がん診断一時金・通院保障付き<br>月額例：1,500円〜</p>
+        <ul class="badges">
+        <li>がん診断給付金</li>
+        <li>再発時対応</li>
+        </ul>
+        <!-- カード内のアクションボタン -->
+        <div class="actions">
+        <button><span>🔍</span> 詳細を見る</button>
+        <button><span>🧮</span> 見積もる</button>
+        </div>
+    </article>
+
+    <article class="card">
+        <div class="product-image">
+        <img src="就業不能保険.png" alt="就業不能保険ロゴ" />
+        </div>
+        <h3>就業不能保険</h3>
+        <p class="subtitle">働けなくなったときの収入保障<br>月額例：2,300円〜</p>
+        <ul class="badges">
+        <li>メンタル疾患OK</li>
+        <li>最長2年保障</li>
+        </ul>
+        <!-- カード内のアクションボタン -->
+        <div class="actions">
+        <button><span>🔍</span> 詳細を見る</button>
+        <button><span>🧮</span> 見積もる</button>
+        </div>
+    </article>
+
+    <article class="card">
+        <div class="badge-ribbon">おすすめ</div>
+        <div class="product-image">
+        <img src="個人年金保険.png" alt="個人年金保険ロゴ" />
+        </div>
+        <h3>個人年金保険</h3>
+        <p class="subtitle">老後の生活に備える積立型保険<br>返戻率最大112%</p>
+        <ul class="badges">
+        <li>税制優遇あり</li>
+        <li>10年分割受取</li>
+        </ul>
+        <!-- カード内のアクションボタン -->
+        <div class="actions">
+        <button><span>🔍</span> 詳細を見る</button>
+        <button><span>🧮</span> 見積もる</button>
+        </div>
+    </article>
+
+    <article class="card">
+        <div class="badge-ribbon">おすすめ</div>
+        <div class="product-image">
+        <img src="学資保険.png" alt="学資保険ロゴ" />
+        </div>
+        <h3>学資保険</h3>
+        <p class="subtitle">子供のイベントに備える<br>月額例：2,000円〜</p>
+        <ul class="badges">
+        <li>税制優遇あり</li>
+        <li>年払いでもっとお安く</li>
+        </ul>
+        <!-- カード内のアクションボタン -->
+        <div class="actions">
+        <button><span>🔍</span> 詳細を見る</button>
+        <button><span>🧮</span> 見積もる</button>
+        </div>
+    </article>
+    </section>
+
+    <!-- 診断ツールセクション -->
+    <section class="diagnosis-section">
+    <div class="diagnosis-container">
+        <!-- 左側：イラスト -->
+        <div class="diagnosis-image">
+        <img src="診断.png" alt="診断イメージ">
+        </div>
+
+        <!-- 右側：診断説明とステップ -->
+        <div class="diagnosis-content">
+        <h2>あなたにぴったりの保険診断</h2>
+        <p>簡単な3問に答えるだけで、最適な保険をご提案！</p>
+
+        <ul class="diagnosis-steps">
+            <li><span>①</span> 年齢・性別を選択</li>
+            <li><span>②</span> 家族構成・職業</li>
+            <li><span>③</span> 健康状態・希望条件</li>
+        </ul>
+
+        <button class="start-diagnosis-btn">▶ 診断を始める</button>
+        </div>
+    </div>
+    </section>
+
+    <!-- ランキングセクション -->
+    <section class="ranking-cards">
+    <div class="age-tabs">
+        <button class="active" data-age="20s">20代</button>
+        <button data-age="30s">30代</button>
+        <button data-age="40s">40代</button>
+    </div>
+
+    <!-- 20代向け -->
+    <div class="ranking-grid" id="ranking-20s">
+        <div class="ranking-card">
+        <h3>医療保険A</h3>
+        <p>入院・手術をカバー<br>月額：1,900円〜</p>
+        </div>
+        <div class="ranking-card">
+        <h3>がん保険B</h3>
+        <p>診断一時金＋通院給付<br>月額：1,500円〜</p>
+        </div>
+        <div class="ranking-card">
+        <h3>就業不能保険C</h3>
+        <p>うつ病含む休職時支援<br>月額：2,300円〜</p>
+        </div>
+    </div>
+
+    <!-- 30代向け -->
+    <div class="ranking-grid" id="ranking-30s" style="display: none;">
+        <div class="ranking-card">
+        <h3>医療保険B</h3>
+        <p>入院・通院フルサポート<br>月額：2,400円〜</p>
+        </div>
+        <div class="ranking-card">
+        <h3>がん保険C</h3>
+        <p>治療・再発まで対応<br>月額：2,000円〜</p>
+        </div>
+        <div class="ranking-card">
+        <h3>個人年金D</h3>
+        <p>老後資金に備える<br>返戻率112%</p>
+        </div>
+    </div>
+
+    <!-- 40代向け -->
+    <div class="ranking-grid" id="ranking-40s" style="display: none;">
+        <div class="ranking-card">
+        <h3>医療保険C</h3>
+        <p>三大疾病特化型<br>月額：3,000円〜</p>
+        </div>
+        <div class="ranking-card">
+        <h3>個人年金E</h3>
+        <p>60歳から年金受取開始<br>返戻率108%</p>
+        </div>
+        <div class="ranking-card">
+        <h3>終身保険F</h3>
+        <p>死亡保障付き＋貯蓄型<br>月額：4,500円〜</p>
+        </div>
+    </div>
+    </section>
+
+    <section class="reviews-section">
+    <h2>ご契約者さまの声</h2>
+    <div class="reviews-grid">
+        <div class="review-card">
+        <p class="review-text">入院時にすぐ給付金が受け取れました。手続きも簡単で安心でした！</p>
+        <div class="review-meta">👩‍🦰 30代女性｜医療保険A</div>
+        </div>
+        <div class="review-card">
+        <p class="review-text">がん治療のときに家計の支えになりました。本当に加入してよかった。</p>
+        <div class="review-meta">👨 40代男性｜がん保険C</div>
+        </div>
+        <div class="review-card">
+        <p class="review-text">育休後の収入に不安がありましたが、就業不能保険で安心できました。</p>
+        <div class="review-meta">👩 30代女性｜就業不能保険B</div>
+        </div>
+    </div>
+    </section>
+
+  </main>
+
+  <!-- フッター -->
+  <footer class="site-footer">
+    <p>&copy; 2025 保険アプリ会社</p>
+    <nav>
+      <a href="#">会社概要</a> |
+      <a href="#">お問い合わせ</a> |
+      <a href="#">プライバシーポリシー</a>
+    </nav>
+  </footer>
+
+  <script>
+    // ダークモード切り替え
+    const toggle = document.getElementById("darkModeToggle");
+    toggle.addEventListener("change", () => {
+      document.body.classList.toggle("dark-mode", toggle.checked);
+    });
+  </script>
+</body>
+</html>
+
+<script src="script.js"></script>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const buttons = document.querySelectorAll(".age-tabs button");
+    const grids = document.querySelectorAll(".ranking-grid");
+
+    buttons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        // アクティブなタブの切替
+        buttons.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+
+        // 対象グリッド表示
+        const target = btn.dataset.age;
+        grids.forEach(grid => {
+          grid.style.display = "none";
+        });
+        document.getElementById("ranking-" + target).style.display = "flex";
+      });
+    });
+  });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  // --- カウントアップ ---
+  const display = document.getElementById("savingsAmount");
+  const start = 300000;
+  const end = 325000;
+  const duration = 2000;
+  const frameRate = 60;
+  const totalFrames = Math.round(duration / (1000 / frameRate));
+  let frame = 0;
+
+  const counter = setInterval(() => {
+    frame++;
+    const progress = frame / totalFrames;
+    const current = Math.floor(start + (end - start) * progress);
+    display.textContent = `¥${current.toLocaleString()}`;
+    if (frame >= totalFrames) clearInterval(counter);
+  }, 1000 / frameRate);
+
+  // --- グラフ ---
+  const ctx = document.getElementById("savingsChart").getContext("2d");
+  new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: ["1月", "2月", "3月", "4月", "5月", "6月", "7月"],
+      datasets: [{
+        label: "累積額（万円）",
+        data: [50, 100, 150, 200, 250, 300, 325],
+        backgroundColor: "#facc15",
+        borderRadius: 8,
+        barThickness: 24
+      }]
+    },
+    options: {
+      responsive: false,
+      plugins: {
+        legend: { display: false },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { callback: val => `${val}万` }
+        }
+      }
+    }
+  });
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const ctx = document.getElementById("contractTrendChart").getContext("2d");
+  const trendChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: ["7日前", "6日前", "5日前", "4日前", "3日前", "2日前", "昨日"],
+      datasets: [{
+        label: "契約数",
+        data: [3, 5, 9, 12, 17, 22, 28],
+        fill: false,
+        borderColor: "#3b82f6",
+        tension: 0.3,
+        pointBackgroundColor: "#3b82f6",
+        pointRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            stepSize: 5
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          display: false
+        }
+      }
+    }
+  });
+</script>

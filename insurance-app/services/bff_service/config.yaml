@@ -3,7 +3,7 @@ keycloak:
   discovery_url: "http://localhost:8080/realms/internet-service-relm/.well-known/openid-configuration"
   client_id: "insurance-app"
   client_secret: "6l2Qk0YxputLaDGNBuFMHUJ4h5MtpWub"
-  redirect_uri: "http://localhost:8000/api/v1/auth/callback"
+  redirect_uri: "http://localhost:8010/api/v1/auth/callback"
 
 session:
   secret_key: "XWfh5GFl32X_0RzYc2p3v7h2-MorW-Xr0hI0prElB_c"
@@ -11,3 +11,25 @@ session:
   redis_url: "redis://localhost:6379/0"
   rememberme_ttl: 2592000
   normal_ttl: 1800
+
+plans_service:
+  base_url: "http://localhost:8003"
+  get_path: "/api/v1/public/plans" 
+
+quotation_service:
+  base_url: "http://localhost:8000"
+  create_path: "/api/v1/quotes/pension"
+  get_path: "/api/v1/my/quotes"
+  change_path: "/api/v1/my/quotes"
+  change_status_additional_path: "/changestate"
+
+application_service:
+  base_url: "http://localhost:8001"
+  create_path: "/api/v1/applications/pension"
+  get_path: "/api/v1/my/applications"
+  change_path: "/api/v1/my/applications"
+  change_status_additional_path: "/changestate"
+
+contraction_service:
+  base_url: "http://localhost:8002"
+  get_path: "/api/v1/my/contraction"

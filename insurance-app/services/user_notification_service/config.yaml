@@ -1,0 +1,12 @@
+mongodb:
+  dsn: "mongodb://localhost:27017/notification_service"
+  database: "notification_service"
+  user_collection: "user_notifications"
+  status_collection: "user_read_status"
+
+nats:
+  address: "nats://localhost:4222"
+
+keycloak:
+  keycloak_base_url: "http://localhost:8080/realms/internet-service-relm"
+  client_id: "insurance-app"

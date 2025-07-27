@@ -11,12 +11,18 @@ tags:
   description: 公開保険商品API
 - name: Auth
   description: セッションベースの認証処理
+- name: BFF
+  description: api合成処理
+- name: BFF Proxy
+  description: Proxy API 
 - name: Quotation
   description: 保険見積もり関連API
 - name: Application
   description: 保険申込関連API
 - name: Contract
   description: 保険契約関連API
+- name: Notification
+  description: ユーザー通知関連API
 
 paths:
   /api/v1/public/plans:
@@ -47,6 +53,20 @@ paths:
                     image_key: "education001.jpg"
         '500':
           description: サーバーエラー
+
+  /api/v1/bff/public/homepage-info:
+    get:
+      tags: [BFF]
+      summary: 非ログインユーザー向けホーム情報
+      description: 保険紹介一覧やキャンペーン情報など、ホーム画面に必要な情報を返します。
+      operationId: getHomepageInfo
+      responses:
+        '200':
+          description: ホーム情報取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomepageInfoResponseModel'
 
   /api/v1/auth/login:
     get:
@@ -131,6 +151,447 @@ paths:
                   message:
                     type: string
                     example: ログアウト完了
+
+  /api/v1/bff/my/dashboard:
+    get:
+      tags: 
+        - BFF
+      summary: ログインユーザーダッシュボード情報一括取得
+      description: 見積一覧、申込一覧、契約一覧、未読通知件数をまとめて返します。
+      operationId: getMyDashboard
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: ダッシュボード情報取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quotes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PensionQuoteResponseModel'
+                  applications:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApplicationResponseModel'
+                  contracts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ContractResponseModel'
+                  unread_notifications:
+                    type: integer
+
+  /api/v1/bff/my/quotes-summary:
+    get:
+      tags: [BFF]
+      summary: 見積もりサマリー取得
+      description: ログインユーザーの見積件数や状態を簡易集計して返します。
+      operationId: getMyQuoteSummary
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: サマリー取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteSummaryResponseModel'
+
+  /api/v1/bff/my/contracts-summary:
+    get:
+      tags: [BFF]
+      summary: 契約サマリー取得
+      description: ログインユーザーの契約件数（active / expired / cancelled）を返します。
+      operationId: getMyContractSummary
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: サマリー取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractSummaryResponseModel'
+
+  /api/v1/bff/my/quotes-with-application:
+    get:
+      tags:
+        - BFF
+      summary: 見積もりと申込情報の結合データ取得
+      description: ログインユーザーの見積もりに対応する申込情報を統合して返却します。
+      operationId: getMyQuotesWithApplication
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 見積もり＋申込の統合リストを返却
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QuoteWithApplicationModel'
+        '401':
+          description: 認証失敗（アクセストークン無効）
+
+  /api/v1/bff/quotes/pension:
+    post:
+      tags:
+        - BFF Proxy
+      summary: 見積もり作成（Proxy）
+      description: quotation_serviceのPOST /quotes/pensionをBFF経由で呼び出す。
+      operationId: proxyCreatePensionQuote
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PensionQuoteRequestModel'
+      responses:
+        '200':
+          description: 見積もり作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PensionQuoteResponseModel'
+        '400':
+          description: リクエスト不正
+        '401':
+          description: 認証失敗
+        '500':
+          description: 内部エラー
+
+  /api/v1/bff/my/quotes:
+    get:
+      tags:
+        - BFF Proxy
+      summary: 見積もり一覧取得（Proxy）
+      description: quotation_serviceのGET /my/quotesをBFF経由で呼び出す。
+      operationId: proxyGetMyQuotes
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 見積もり一覧取得成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PensionQuoteResponseModel'
+        '401':
+          description: 認証失敗
+        '500':
+          description: 内部エラー
+
+  /api/v1/bff/my/quotes/{quote_id}:
+    get:
+      tags:
+        - BFF Proxy
+      summary: 個別見積取得（Proxy）
+      description: quotation_serviceのGET /my/quotes/{quote_id}をBFF経由で呼び出す。
+      operationId: proxyGetMyQuoteById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: quote_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 見積もり取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PensionQuoteResponseModel'
+        '401':
+          description: 認証失敗
+        '404':
+          description: 対象見積もりが存在しない
+        '500':
+          description: 内部エラー
+
+    patch:
+      tags:
+        - BFF Proxy
+      summary: 見積もり条件の部分更新（Proxy）
+      description: quotation_serviceのPATCH /my/quotes/{quote_id}をBFF経由で呼び出す。
+      operationId: proxyPatchMyQuote
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: quote_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PartialQuoteUpdateModel'
+      responses:
+        '200':
+          description: 見積もり更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PensionQuoteResponseModel'
+        '400':
+          description: 不正なリクエストまたはステータス
+        '401':
+          description: 認証失敗
+        '500':
+          description: 内部エラー
+
+    delete:
+      tags:
+        - BFF Proxy
+      summary: 見積もりキャンセル（Proxy）
+      description: quotation_serviceのDELETE /my/quotes/{quote_id}をBFF経由で呼び出す。
+      operationId: proxyCancelMyQuote
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: quote_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: キャンセル成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteStateUpdateModel'
+        '400':
+          description: 不正な操作
+        '401':
+          description: 認証失敗
+        '500':
+          description: 内部エラー
+
+  /api/v1/bff/my/quotes/{quote_id}/changestate:
+    put:
+      tags:
+        - BFF Proxy
+      summary: 見積もりステータス更新（Proxy）
+      description: quotation_serviceのPUT /my/quotes/{quote_id}/changestateをBFF経由で呼び出す。
+      operationId: proxyChangeMyQuoteState
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteStateUpdateRequest'
+      parameters:
+        - name: quote_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ステータス変更成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteStateUpdateModel'
+        '400':
+          description: 不正な状態遷移
+        '401':
+          description: 認証失敗
+        '500':
+          description: 内部エラー
+
+  /api/v1/bff/applications/pension:
+    post:
+      tags:
+        - BFF Proxy
+      summary: 保険申込作成（Proxy）
+      description: application_serviceのPOST /applicationsをBFF経由で呼び出す。
+      operationId: proxyCreateApplication
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationRequestModel'
+      responses:
+        '200':
+          description: 申込作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponseModel'
+        '400':
+          description: 整合性チェック失敗など
+        '401':
+          description: 認証失敗
+        '500':
+          description: 内部エラー
+
+  /api/v1/bff/my/applications:
+    get:
+      tags:
+        - BFF Proxy
+      summary: 申込一覧取得（Proxy）
+      description: application_serviceのGET /my/applicationsをBFF経由で呼び出す。
+      operationId: proxyGetMyApplications
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 申込一覧取得成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApplicationResponseModel'
+        '401':
+          description: 認証失敗
+        '500':
+          description: 内部エラー
+
+  /api/v1/bff/my/applications/{application_id}:
+    get:
+      tags:
+        - BFF Proxy
+      summary: 個別申込取得（Proxy）
+      description: application_serviceのGET /my/applications/{application_id}をBFF経由で呼び出す。
+      operationId: proxyGetMyApplicationById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: application_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 申込取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponseModel'
+        '401':
+          description: 認証失敗
+        '404':
+          description: 該当申込が存在しない
+        '500':
+          description: 内部エラー
+
+    patch:
+      tags:
+        - BFF Proxy
+      summary: 申込情報の部分更新（Proxy）
+      description: application_serviceのPATCH /my/applications/{application_id}をBFF経由で呼び出す。
+      operationId: proxyPatchMyApplication
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: application_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PartialApplicationUpdateModel'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponseModel'
+        '400':
+          description: 不正な操作
+        '401':
+          description: 認証失敗
+        '500':
+          description: 内部エラー
+
+    delete:
+      tags:
+        - BFF Proxy
+      summary: 申込キャンセル（Proxy）
+      description: application_serviceのDELETE /my/applications/{application_id}をBFF経由で呼び出す。
+      operationId: proxyDeleteMyApplication
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: application_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: キャンセル成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationStatusResponseModel'
+        '400':
+          description: 不正な状態
+        '401':
+          description: 認証失敗
+        '500':
+          description: 内部エラー
+
+  /api/v1/bff/my/applications/{application_id}/changestate:
+    put:
+      tags:
+        - BFF Proxy
+      summary: 申込ステータス変更（Proxy）
+      description: application_serviceのPUT /my/applications/{application_id}/changestateをBFF経由で呼び出す。
+      operationId: proxyChangeApplicationStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: application_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationStateUpdateRequest'
+      responses:
+        '200':
+          description: ステータス変更成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationStateUpdateResponse'
+        '400':
+          description: 不正な状態遷移
+        '401':
+          description: 認証失敗
+        '500':
+          description: 内部エラー
 
   /api/v1/quotes/pension:
     post:
@@ -603,6 +1064,212 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ContractResponseModel'
+
+  /global_notification:
+    get:
+      tags:
+        - Notification
+      summary: 全体通知一覧取得
+      responses:
+        '200':
+          description: 一覧取得成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GlobalNotification'
+
+    post:
+      tags:
+        - Notification
+      summary: 全体通知を作成
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GlobalNotification'
+      responses:
+        '200':
+          description: 作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GlobalNotification'
+
+  /user_notification/{user_id}:
+    get:
+      tags:
+        - Notification
+      summary: ユーザー通知の取得
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserNotification'
+
+    post:
+      tags:
+        - Notification
+      summary: ユーザー通知の登録
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserNotification'
+      responses:
+        '200':
+          description: 登録成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserNotification'
+
+    delete:
+      tags:
+        - Notification
+      summary: ユーザー通知の削除
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 削除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /user_notification/unread/{user_id}:
+    get:
+      tags:
+        - Notification
+      summary: ユーザーの未読通知取得
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserNotification'
+
+  /user_notification/unread_count/{user_id}:
+    get:
+      tags:
+        - Notification
+      summary: 未読通知件数の取得
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 件数取得成功
+          content:
+            application/json:
+              schema:
+                type: integer
+
+  /user_notification/reset/{user_id}:
+    delete:
+      tags:
+        - Notification
+      summary: 既読状態のリセット
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /user_notification/read/{user_id}:
+    get:
+      tags:
+        - Notification
+      summary: 既読通知の取得
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+    post:
+      tags:
+        - Notification
+      summary: 通知を既読にマーク
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkReadRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadNotificationResponse'
 
 components:
   securitySchemes:
@@ -1099,3 +1766,196 @@ components:
           type: string
         to_state:
           type: string
+
+    QuoteWithApplicationModel:
+      type: object
+      description: 見積もりと申込情報の統合モデル
+      properties:
+        quote:
+          $ref: '#/components/schemas/PensionQuoteResponseModel'
+        application:
+          $ref: '#/components/schemas/ApplicationResponseModel'
+
+    RecommendedPlanModel:
+      type: object
+      properties:
+        plan_id:
+          type: string
+        name:
+          type: string
+        monthly_premium:
+          type: integer
+        category:
+          type: string
+        description:
+          type: string
+        image_url:
+          type: string
+
+    QuoteSummaryResponseModel:
+      type: object
+      properties:
+        total_count:
+          type: integer
+        latest_created_at:
+          type: string
+          format: date-time
+        draft_count:
+          type: integer
+        confirmed_count:
+          type: integer
+        applied_count:
+          type: integer
+        cancelled_count:
+          type: integer
+
+    ContractSummaryResponseModel:
+      type: object
+      properties:
+        total_count:
+          type: integer
+        active_count:
+          type: integer
+        expired_count:
+          type: integer
+        cancelled_count:
+          type: integer
+
+    HomepageInfoResponseModel:
+      type: object
+      properties:
+        featured_plans:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeaturedPlanModel'
+        campaigns:
+          type: array
+          items:
+            $ref: '#/components/schemas/CampaignModel'
+
+    FeaturedPlanModel:
+      type: object
+      properties:
+        plan_id:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        image_url:
+          type: string
+        monthly_premium:
+          type: integer
+
+    CampaignModel:
+      type: object
+      properties:
+        campaign_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        image_url:
+          type: string
+        valid_until:
+          type: string
+          format: date
+
+    MultilingualMessage:
+      type: object
+      properties:
+        ja:
+          type: string
+          nullable: true
+        en:
+          type: string
+          nullable: true
+
+    GlobalNotification:
+      type: object
+      properties:
+        message_id:
+          type: string
+        type:
+          type: string
+        title:
+          $ref: '#/components/schemas/MultilingualMessage'
+        message_summary:
+          $ref: '#/components/schemas/MultilingualMessage'
+        message_detail:
+          $ref: '#/components/schemas/MultilingualMessage'
+        announcement_date:
+          type: string
+          format: date-time
+        target:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    UserNotification:
+      type: object
+      properties:
+        message_id:
+          type: string
+        user_id:
+          type: string
+        type:
+          type: string
+        title:
+          $ref: '#/components/schemas/MultilingualMessage'
+        message_summary:
+          $ref: '#/components/schemas/MultilingualMessage'
+        message_detail:
+          $ref: '#/components/schemas/MultilingualMessage'
+        is_important:
+          type: boolean
+        delivery_status:
+          type: string
+        delivered_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ReadNotificationResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+        updated_message_ids:
+          type: array
+          items:
+            type: string
+        already_read_ids:
+          type: array
+          items:
+            type: string
+        newly_marked_read:
+          type: array
+          items:
+            type: string
+
+    MarkReadRequest:
+      type: object
+      properties:
+        message_ids:
+          type: array
+          items:
+            type: string

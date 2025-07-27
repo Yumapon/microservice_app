@@ -19,6 +19,7 @@ import httpx
 import redis.asyncio as redis
 from jose import jwt
 from fastapi import Request, HTTPException, status
+from itsdangerous import URLSafeSerializer
 
 from app.config.config import Config
 from app.dependencies.oidc_client import OIDCClient
@@ -137,6 +138,7 @@ async def get_valid_session(request: Request):
                 session["refresh_token"] = token_data["refresh_token"]
 
             # Redisのセッションも更新
+            serializer = URLSafeSerializer(config.session["secret_key"])
             token = request.cookies.get(SESSION_COOKIE_NAME)
             session_id = serializer.loads(token)
             await redis_client.setex(session_id, 1800, json.dumps(session))

@@ -72,3 +72,77 @@
   },
   "plan_code_description": "個人年金保険Aタイプ"
   }
+
+  // ============================================================================
+  // MongoDB Collection: global_notifications
+  // 概要: 全体宛て通知
+  // ============================================================================
+  {
+    "_id": ObjectId,
+    "message_id": "UUID文字列",
+    "type": "info",  // "info" | "warning" | "error" | "promotion" など
+    "title": {
+      "ja": "システムメンテナンスのお知らせ",
+      "en": "System Maintenance Notice"
+    },
+    "message_summary": {
+      "ja": "7月10日 02:00-04:00にメンテナンスを行います。",
+      "en": "Maintenance on July 10 from 02:00 to 04:00."
+    },
+    "message_detail": {
+      "ja": "システムの安定性向上のため、...",
+      "en": "To improve system stability, ..."
+    },
+    "announcement_date": ISODate("2025-07-01T00:00:00Z"),
+    "target": "all",  // "all" 固定
+    "created_at": ISODate(),
+    "updated_at": ISODate()
+  }
+
+  // ============================================================================
+  // MongoDB Collection: user_notifications
+  // 概要: 個人宛メッセージ通知の管理
+  // ============================================================================
+  {
+    "_id": ObjectId,
+    "message_id": "UUID文字列",
+    "user_id": "ユーザーID（UUIDまたは文字列）",
+    "type": "alert",  // "info" | "alert" | "progress" | "error"など
+    "title": {
+      "ja": "契約更新のご案内",
+      "en": "Notice of Contract Renewal"
+    },
+    "message_summary": {
+      "ja": "○○保険の更新時期が近づいています。",
+      "en": "Your insurance policy is due for renewal."
+    },
+    "message_detail": {
+      "ja": "2025年8月に更新が必要です。",
+      "en": "Please renew it by August 2025."
+    },
+    "is_important": true,
+    "delivery_status": "delivered", // "delivered" | "failed" | "pending"
+    "delivered_at": ISODate("2025-07-20T12:00:00Z"),
+    "created_at": ISODate(),
+    "updated_at": ISODate()
+  }
+
+  // ============================================================================
+  // MongoDB Collection: user_read_status
+  // 概要: 既読状態の管理
+  // ============================================================================
+  {
+    "_id": ObjectId,
+    "user_id": "ユーザーID",
+    "read_messages": [
+      {
+        "message_id": "UUID文字列",
+        "read_at": ISODate("2025-07-21T09:30:00Z")
+      },
+      {
+        "message_id": "UUID文字列",
+        "read_at": ISODate("2025-07-21T10:00:00Z")
+      }
+    ],
+    "updated_at": ISODate()
+  }

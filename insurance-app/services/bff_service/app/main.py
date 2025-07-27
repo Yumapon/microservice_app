@@ -10,11 +10,16 @@
 # インポート
 # ------------------------------------------------------------------------------
 import logging
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.dependencies.auth_guard import get_valid_session
-from app.routes import auth, business
+from app.routes import (
+    api_synthesis, 
+    api_proxy,
+    auth 
+)
 from app.dependencies.oidc_client import OIDCClient
+
 from app.config.config import Config
 
 # ------------------------------------------------------------------------------
@@ -45,6 +50,14 @@ oidc_client = OIDCClient(
 # ------------------------------------------------------------------------------
 app = FastAPI(title="Public Insurance Plans Service")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # フロントのURLを指定
+    allow_credentials=True,  # Cookieを使うので必要
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # OIDCクライアントをアプリケーションステートに保持
 app.state.oidc_client = oidc_client
 
@@ -52,7 +65,8 @@ app.state.oidc_client = oidc_client
 # ルーター登録
 # ------------------------------------------------------------------------------
 app.include_router(auth.router, prefix="/api/v1/auth")
-app.include_router(business.router, prefix="/api/v1")
+app.include_router(api_synthesis.router, prefix="/api/v1/bff")
+app.include_router(api_proxy.router, prefix="/api/v1/bff")
 
 # ------------------------------------------------------------------------------
 # アプリケーション起動時イベント

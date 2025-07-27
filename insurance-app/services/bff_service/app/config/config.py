@@ -48,3 +48,34 @@ class Config:
         セッション制御に関する設定情報を返す（未設定時は空dictを返す）
         """
         return self._data.get("session", {})
+    
+    # --------------------------------------------------------------------------
+    # 外部サービスの取得
+    # --------------------------------------------------------------------------
+    @property
+    def plans_service(self):
+        """
+        plans_serviceに関する設定情報を返す（未設定時は空dictを返す）
+        """
+        return self._data.get("plans_service", {})
+    
+    @property
+    def quotation_service(self):
+        """
+        quotation_serviceに関する設定情報を返す（未設定時は空dictを返す）
+        """
+        return self._data.get("quotation_service", {})
+
+    @property
+    def application_service(self):
+        """
+        application_serviceに関する設定情報を返す（未設定時は空dictを返す）
+        """
+        return self._data.get("application_service", {})
+    
+    @property
+    def contraction_service(self):
+        """
+        contraction_serviceに関する設定情報を返す（未設定時は空dictを返す）
+        """
+        return self._data.get("contraction_service", {})

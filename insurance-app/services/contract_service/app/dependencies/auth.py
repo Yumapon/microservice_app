@@ -3,8 +3,8 @@
 Keycloakを使ったJWTベースの認証・認可機構
 
 - 認証: アクセストークンの検証とデコード
-- 認可: contract_writer権限の有無チェック
 - 認可: contract_reader権限の有無チェック
+- 認可: contract_writer権限の有無チェック
 """
 
 # ------------------------------------------------------------------------------
@@ -73,7 +73,7 @@ async def get_public_key() -> rsa.RSAPublicKey:
 # ------------------------------------------------------------------------------
 async def authenticate_user(token: str = Depends(oauth2_scheme)) -> Dict:
     """
-    Authorizationヘッダ内のアクセストークンをKeycloakの公開鍵で検証し、デコードした内容を返す
+    Authorizationヘッダ内のアクセストークンをKeycloakの公開鍵で検証し、デコードした内容と元トークンを返す
     """
     logger.info("アクセストークン認証開始")
 
@@ -97,7 +97,10 @@ async def authenticate_user(token: str = Depends(oauth2_scheme)) -> Dict:
         )
 
         logger.info("アクセストークン検証成功: sub=%s", payload.get("sub"))
-        return payload
+        return {
+            **payload,
+            "access_token": token
+        }
 
     except jwt.ExpiredSignatureError:
         logger.warning("アクセストークン期限切れ")
@@ -128,36 +131,71 @@ async def authenticate_user(token: str = Depends(oauth2_scheme)) -> Dict:
         )
 
 # ------------------------------------------------------------------------------
-# 認可: contract_writer権限を保持しているかの確認
+# 認可: application_writer権限を保持しているかの確認
 # ------------------------------------------------------------------------------
-def has_contract_write_permission(token: dict) -> bool:
+def has_application_write_permission(token: dict) -> bool:
     """
-    tokenに 'contract_writer' 権限が含まれているかを判定
+    tokenに 'application_writer' 権限が含まれているかを判定
     """
     try:
         roles = token.get("resource_access", {}) \
                      .get(CLIENT_ID, {}) \
                      .get("roles", [])
-        return "contract_writer" in roles
+        return "application_writer" in roles
     except Exception:
-        logger.exception("contract_writer権限チェック中に例外発生")
+        logger.exception("application_writer権限チェック中に例外発生")
+        return False
+    
+# ------------------------------------------------------------------------------
+# 認可: application_reader権限を保持しているかの確認
+# ------------------------------------------------------------------------------
+def has_application_read_permission(token: dict) -> bool:
+    """
+    tokenに 'application_reader' 権限が含まれているかを判定
+    """
+    try:
+        roles = token.get("resource_access", {}) \
+                     .get(CLIENT_ID, {}) \
+                     .get("roles", [])
+        return "application_reader" in roles
+    except Exception:
+        logger.exception("application_reader権限チェック中に例外発生")
         return False
 
 # ------------------------------------------------------------------------------
-# FastAPI依存関数: contract_writer権限を強制する
+# FastAPI依存関数: application_writer権限を強制する
 # ------------------------------------------------------------------------------
-async def require_contract_write_permission(
+async def require_application_write_permission(
     token: dict = Depends(authenticate_user)
 ) -> dict:
     """
-    quote_writer権限を持つユーザのみを許可する依存関数
+    application_writer権限を持つユーザのみを許可する依存関数
     """
-    if not has_contract_write_permission(token):
-        logger.warning("contract_writer権限なし: sub=%s", token.get("sub"))
+    if not has_application_write_permission(token):
+        logger.warning("application_writer権限なし: sub=%s", token.get("sub"))
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="contract_writer権限がありません"
+            detail="application_writer権限がありません"
         )
 
-    logger.info("contract_writer権限確認済み: sub=%s", token.get("sub"))
+    logger.info("application_writer権限確認済み: sub=%s", token.get("sub"))
+    return token
+
+# ------------------------------------------------------------------------------
+# FastAPI依存関数: application_reader権限を強制する
+# ------------------------------------------------------------------------------
+async def require_application_read_permission(
+    token: dict = Depends(authenticate_user)
+) -> dict:
+    """
+    application_reader権限を持つユーザのみを許可する依存関数
+    """
+    if not has_application_read_permission(token):
+        logger.warning("application_reader権限なし: sub=%s", token.get("sub"))
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="application_reader権限がありません"
+        )
+
+    logger.info("application_reader権限確認済み: sub=%s", token.get("sub"))
     return token

@@ -185,4 +185,6 @@ CREATE TABLE contract_details (
     -- 商品連携用コード
     plan_code VARCHAR NOT NULL,                        -- 商品コード
     payment_method VARCHAR NOT NULL                    -- 支払方法（スナップショット）
+    user_consent BOOLEAN NOT NULL,                     -- 同意の有無（重要事項説明への同意）
+    identity_verified BOOLEAN NOT NULL                 -- 本人確認完了フラグ
 );

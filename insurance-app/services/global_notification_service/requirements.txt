@@ -1,0 +1,17 @@
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+
+# モデル・検証
+pydantic==2.7.1
+
+# NATS
+nats-py==2.6.0
+
+# MongoDB
+motor==3.7.1
+
+# テスト
+pytest==8.2.2
+pytest-mock==3.14.0
+pytest-asyncio==0.23.6
+pytest-cov

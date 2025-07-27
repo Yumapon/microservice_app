@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 config = Config()
 
+SESSION_COOKIE_NAME = "bff_session_id"
+
 # ------------------------------------------------------------------------------
 # Utility関数：stateのエンコード/デコード（Base64 + JSON）
 # ------------------------------------------------------------------------------
@@ -66,7 +68,11 @@ async def login(request: Request, remember_me: bool = False):
     if session:
         logger.info("セッションあり: 既にログイン済みユーザー")
         return JSONResponse(
-            content={"message": "既にログイン済み", "user": session["user_info"]}
+            content={
+                "message": "既にログイン済み", 
+                "session_id": request.cookies.get(SESSION_COOKIE_NAME) or "N/A",
+                "user": session["user_info"]
+            }
         )
 
     # Keycloakの認可エンドポイント構築
@@ -136,11 +142,11 @@ async def auth_callback(request: Request, code: str, state: str = None):
     }
 
     # クッキーに保存（remember_me による TTL分岐）
-    response = RedirectResponse(url="/api/v1/top")
+    response = RedirectResponse(url="http://localhost:5173/mypage")
     max_age = config.session["rememberme_ttl"] if remember_me else config.session["normal_ttl"]
     await create_session_and_set_cookie(response, session_data, max_age)
 
-    logger.info("セッション保存・クッキーセット完了 -> /topへリダイレクト")
+    logger.info("セッション保存・クッキーセット完了 -> /mypageへリダイレクト")
     return response
 
 # ------------------------------------------------------------------------------
