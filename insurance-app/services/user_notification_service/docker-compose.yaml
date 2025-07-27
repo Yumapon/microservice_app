@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  user_notification_service:
+    container_name: user_notification_service
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      # 外部から 8005 → コンテナ内の APP_PORT_CONTAINER
+      - "${APP_PORT_HOST:-8005}:${APP_PORT_CONTAINER:-8000}"
+    depends_on:
+      - mongo
+      - nats
+    environment:
+      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017}
+      - APP_PORT=${APP_PORT_CONTAINER:-8000}
+      - NATS_ADDRESS=${NATS_ADDRESS:-nats://nats:4222}
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port ${APP_PORT_CONTAINER:-8000}
+      --reload
+    networks:
+      - notification_net
+
+  mongo:
+    container_name: mongo
+    image: mongo:6.0
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongo_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    environment:
+      - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE:-notification_service}
+    networks:
+      - notification_net
+
+  nats:
+    container_name: nats
+    image: nats:2.10-alpine
+    restart: always
+    ports:
+      - "4222:4222"       # クライアント接続ポート
+      - "8222:8222"       # モニタリングポート（http://localhost:8222）
+    command: >
+      -js
+      -m 8222
+    networks:
+      - notification_net
+
+networks:
+  notification_net:
+    name: notification_net
+    driver: bridge
