@@ -1,23 +1,23 @@
 postgres:
-  dsn: "postgresql+asyncpg://appuser:password@localhost:5432/insurance_db"
+  dsn: "postgresql+asyncpg://appuser:password@postgres:5432/insurance_db"
   echo: False
 
 mongodb_rate:
-  dsn: "mongodb://localhost:27017/quote_db"
+  dsn: "mongodb://mongo:27017/quote_db"
   database: "quote_db"
   collection: "interest_rates"
 
 mongodb:
-  dsn: "mongodb://localhost:27017/quote_db"
+  dsn: "mongodb://mongo:27017/quote_db"
   database: "application_db"
   collection: "application_beneficiaries"
   scenario_collection: "application_scenarios"
 
 nats:
-  address: "nats://localhost:4222"
+  address: "nats://nats:4222"
 
 keycloak:
-  keycloak_base_url: "http://localhost:8080/realms/internet-service-relm"
+  keycloak_base_url: "http://keycloak:8080/realms/internet-service-relm"
   client_id: "insurance-app"
 
 session:
@@ -25,7 +25,7 @@ session:
   rememberme_ttl: 2592000
 
 services:
-  quotation_service_url: "http://localhost:8000"
+  quotation_service_url: "http://quotation_service:8000"
 
 pension:
   min_age: 20

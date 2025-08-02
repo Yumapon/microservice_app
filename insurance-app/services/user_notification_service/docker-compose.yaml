@@ -7,8 +7,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      # 外部から 8005 → コンテナ内の APP_PORT_CONTAINER
-      - "${APP_PORT_HOST:-8005}:${APP_PORT_CONTAINER:-8000}"
+      - "${APP_PORT_HOST:-8010}:${APP_PORT_CONTAINER:-8000}"
     depends_on:
       - mongo
       - nats
@@ -22,7 +21,7 @@ services:
       --port ${APP_PORT_CONTAINER:-8000}
       --reload
     networks:
-      - notification_net
+      - insurance_app_net
 
   mongo:
     container_name: mongo
@@ -36,22 +35,24 @@ services:
     environment:
       - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE:-notification_service}
     networks:
-      - notification_net
+      - insurance_app_net
 
   nats:
     container_name: nats
     image: nats:2.10-alpine
     restart: always
     ports:
-      - "4222:4222"       # クライアント接続ポート
-      - "8222:8222"       # モニタリングポート（http://localhost:8222）
+      - "4222:4222"
+      - "8222:8222"
     command: >
       -js
       -m 8222
     networks:
-      - notification_net
+      - insurance_app_net
 
 networks:
-  notification_net:
-    name: notification_net
-    driver: bridge
+  insurance_app_net:
+    external: true
+
+# 必ず以下を先に実行してください
+# docker network create insurance_app_net

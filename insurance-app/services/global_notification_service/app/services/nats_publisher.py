@@ -10,7 +10,6 @@ import json
 import logging
 from typing import Optional
 from nats.aio.client import Client as NATS
-from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
 from app.config.config import Config
 
@@ -20,44 +19,32 @@ logger = logging.getLogger(__name__)
 # グローバル接続インスタンス（初期はNone）
 nats_client: Optional[NATS] = None
 
-async def init_nats_connection():
-    """
-    アプリ起動時に呼び出される NATS 接続初期化関数
-    """
-    global nats_client
-    if nats_client is None:
-        logger.info("NATS接続を初期化: %s", config.nats["address"])
-        nats_client = NATS()
-        await nats_client.connect(config.nats["address"])
-        logger.info("NATS接続完了")
-
-async def close_nats_connection():
-    """
-    アプリ終了時に呼び出される NATS 切断処理
-    """
-    global nats_client
-    if nats_client and nats_client.is_connected:
-        await nats_client.close()
-        logger.info("NATS接続をクローズしました")
-
 logger = logging.getLogger(__name__)
 
 async def publish_event(subject: str, payload: dict):
     """
-    再利用中のNATS接続を用いて、指定トピックにイベントを送信する
-
-    Parameters:
-        subject (str): トピック名（例: "applications.ApplicationConfirmed"）
-        payload (dict): JSON形式のペイロード
+    再利用中のNATS接続を使ってイベント送信（再接続対応）
     """
+    global nats_client
     if not nats_client or not nats_client.is_connected:
-        raise RuntimeError("NATS接続が確立されていません")
+        try:
+            logger.warning("NATS未接続。再接続を試みます...")
+            nats_client = NATS()
+            await nats_client.connect(
+                servers=[config.nats["address"]],
+                reconnect_time_wait=1,
+                max_reconnect_attempts=2,
+                connect_timeout=1
+            )
+            logger.info("NATS再接続成功")
+        except Exception as e:
+            logger.error("NATS再接続失敗（パブリッシュ中止）: %s", str(e))
+            return  # ※失敗しても処理継続
 
     try:
         message = json.dumps(payload, ensure_ascii=False, default=str).encode()
         logger.info("NATSパブリッシュ開始: subject=%s", subject)
         await nats_client.publish(subject, message)
         logger.info("NATSパブリッシュ成功: subject=%s", subject)
-    except (ErrConnectionClosed, ErrTimeout, ErrNoServers) as e:
+    except Exception as e:
         logger.error("NATSパブリッシュ失敗: subject=%s, error=%s", subject, str(e))
-        raise

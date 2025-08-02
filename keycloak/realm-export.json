@@ -1,0 +1,15 @@
+{
+  "id": "internet-service-relm",
+  "realm": "internet-service-relm",
+  "enabled": true,
+  "displayName": "インターネット保険サービス",
+  "loginTheme": "insurance-app",
+  "accountTheme": "insurance-app",
+  "adminTheme": "insurance-app",
+  "emailTheme": "insurance-app",
+  "users": [],
+  "clients": [],
+  "roles": {
+    "realm": []
+  }
+}

@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  keycloak:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: keycloak
+    ports:
+      - "8080:8080"
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    command:
+      - start-dev
+    volumes:
+      - ./themes:/opt/keycloak/themes
+      - ./realm-export.json:/opt/keycloak/data/import/realm-export.json
+    networks:
+      - insurance_app_net
+
+networks:
+  insurance_app_net:
+    external: true
+
+# 必ず以下を先に実行してください
+# docker network create insurance_app_net

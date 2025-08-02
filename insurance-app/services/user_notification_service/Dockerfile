@@ -26,7 +26,9 @@ COPY ./app ./app
 COPY ./config.yaml ./config.yaml
 
 # 非root実行（セキュリティ対策）
-RUN useradd -m appuser
+RUN useradd -m appuser && \
+    chown -R appuser:appuser ${APP_HOME}
+
 USER appuser
 
 # ポートはENVで制御（docker-compose側で対応）

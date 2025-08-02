@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  global_notification_service:
+    container_name: global_notification_service
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${APP_PORT_HOST:-8006}:${APP_PORT_CONTAINER:-8000}"
+    depends_on:
+      - mongodb
+    environment:
+      - MONGO_URI=${MONGO_URI:-mongodb://mongodb:27017}
+      - APP_PORT=${APP_PORT_CONTAINER:-8000}
+      - NATS_ADDRESS=${NATS_ADDRESS:-nats://nats:4222}
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port ${APP_PORT_CONTAINER:-8000}
+      --reload
+    networks:
+      - insurance_app_net
+    restart: unless-stopped
+
+  mongodb:
+    container_name: mongodb
+    image: mongo:6.0
+    restart: always
+    ports:
+      - "27018:27017"
+    volumes:
+      - ./mongo-data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    environment:
+      - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE:-notification_service}
+    networks:
+      - insurance_app_net
+
+networks:
+  insurance_app_net:
+    external: true
+
+# 必ず以下を先に実行してください
+# docker network create insurance_app_net

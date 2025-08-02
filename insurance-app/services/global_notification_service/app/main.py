@@ -9,7 +9,6 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from app.routes import (
     global_notifications 
 )
-from app.services.nats_publisher import init_nats_connection, close_nats_connection
 
 from app.config.config import Config
 
@@ -48,11 +47,3 @@ async def startup_db_client():
     """
     logger.info("MongoDB クライアントの初期化")
     app.state.mongo_client = AsyncIOMotorClient(config.mongodb["dsn"])
-
-@app.on_event("startup")
-async def on_startup():
-    await init_nats_connection()
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    await close_nats_connection()

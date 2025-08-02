@@ -1,10 +1,10 @@
 mongodb:
-  dsn: "mongodb://localhost:27017/notification_service"
+  dsn: "mongodb://mongodb:27017/notification_service"
   database: "notification_service"
   global_collection: "global_notifications"
 
 nats:
-  address: "nats://localhost:4222"
+  address: "nats://nats:4222"
 
 keycloak:
   keycloak_base_url: "http://localhost:8080/realms/internet-service-relm"

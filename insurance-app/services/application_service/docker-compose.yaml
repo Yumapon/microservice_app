@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  application_service:
+    container_name: application_service
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${APP_PORT_HOST:-8001}:${APP_PORT_CONTAINER:-8000}"  # 外部8001 → 内部8000
+    depends_on:
+      - mongo
+      - postgres
+      - nats
+    environment:
+      - APP_PORT=${APP_PORT_CONTAINER:-8000}
+      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-application_db}
+      - POSTGRES_USER=${POSTGRES_USER:-app_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - NATS_ADDRESS=${NATS_ADDRESS:-nats://nats:4222}
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port ${APP_PORT_CONTAINER:-8000}
+      --reload
+    networks:
+      - insurance_app_net
+
+  mongo:
+    container_name: application_mongo
+    image: mongo:6.0
+    restart: always
+    ports:
+      - "27011:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - insurance_app_net
+
+  postgres:
+    container_name: application_postgres
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-application_db}
+      POSTGRES_USER: ${POSTGRES_USER:-app_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d 
+    networks:
+      - insurance_app_net
+  nats:
+    container_name: application_nats
+    image: nats:2.10
+    restart: always
+    ports:
+      - "4223:4222"
+      - "8223:8222"
+    networks:
+      - insurance_app_net
+
+volumes:
+  mongo_data:
+  pg_data:
+
+networks:
+  insurance_app_net:
+    external: true
+
+# 必ず以下を先に実行してください
+# docker network create insurance_app_net
